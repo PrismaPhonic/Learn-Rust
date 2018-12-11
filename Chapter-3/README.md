@@ -16,6 +16,12 @@ find in this folder
     2. [Compound Types](#compound-types)
         1. [Arrays](#arrays)
         2. [Tuples](#tuples)
+4. [Control Flow](#control-flow)
+    1. [If Expressions](#if-expressions)
+    2. [Loops](#loops)
+        1. [Loop](#loop)
+        2. [While](#while)
+        3. [For](#for)
 
 ## Variables
 #### Const vs Let 
@@ -94,7 +100,7 @@ Self explanatory - same as any other language
 
 Single characters, like any character on the keyboard, or any unicode character.
 
-### Compound Type
+### Compound Types
 
 Different from Scalar in that it can represent multiple points of data.  The two
 compound types are arrays or tuples which behave very differently in Rust than
@@ -124,7 +130,7 @@ Generally most things here are pretty sensible.  Just going to point out some
 things that differentiate control flow in Rust from other common higher level languages like
 Javascript, Ruby, Python etc.
 
-#### If 'expressions' (!statements)
+#### If Expressions
 
 ```Rust
 fn main() {
