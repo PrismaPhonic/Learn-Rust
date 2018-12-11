@@ -1,234 +1,197 @@
-# Chapter 3
-
-This chapter is pretty dense - we covered Variables, Data Types, Functions and Control
-Flow.  Note that I did the extra suggested projects at the end which you can
-find in this folder
+# Chapter 4
 
 # Table of Contents
-1. [Const vs. Let](#const-vs-let)
-2. [Shadowing](#shadowing)
-3. [Data Types](#data-types)
-    1. [Scalar](#scalar)
-        1. [Integer](#integer)
-        2. [Floating Point](#floating-point)
-        3. [Boolean](#boolean)
-        3. [Characters](#chars)
-    2. [Compound Types](#compound-types)
-        1. [Arrays](#arrays)
-        2. [Tuples](#tuples)
-4. [Control Flow](#control-flow)
-    1. [If Expressions](#if-expressions)
-    2. [Loops](#loops)
-        1. [Loop](#loop)
-        2. [While](#while)
-        3. [For](#for)
+1. [Stack vs. Heap](#stack-vs-heap)
+2. [Ownership Rules](#ownership-rules)
+3. [Copy vs Move](#copy-vs-move)
+4. [Clone](#clone)
+5. [Transfering Ownership](#transfering-ownership)
+6. [References and Borrowing](#references-and-borrowing)
+7. [Mutation and Borrowing](#mutation-and-borrowing)
+8. [Dangling References](#dangling-references)
+9. [Slices](#slices)
+    1. [String Literals](#string-literals)
+    2. [Arrays](#arrays)
 
-## Variables
-#### Const vs Let 
+## Ownership
+#### Stack vs Heap 
 
-Yes, Rust uses **const** and **let**!  But they behave very differently than in
-Javascript.  Remember that by default **all types in rust are immutable!**.  So
-then why even bother with const?  Const will define a variable to a constant
-expression at compile time.  If the value of the expression cannot be determined
-at compile time, then your program won't compile!  Const's in Rust can also be
-declared in the global scope while let's cannot.  Another difference: let
-variables can have their type inferred by the compiler while const's must have
-their type declared at assignment.
+The stack is very fast because it always accesses what is on the top of the
+stack.  It is for memory of a fixed size, like scalars.  If we don't know
+exactly how much memory something needs to take up then it goes on the heap.
+The heap is slower and when something is placed on the heap, it gets a pointer
+put onto the stack - because a pointer is a known fixed size.  When we need to
+use or modify the actual data in the heap, we need to follow a pointer to it -
+which is slow.  
+
+#### Ownership Rules
+
+1. Each value in Rust has a variable that’s called its owner.
+2. There can only be one owner at a time.
+3. When the owner goes out of scope, the value will be dropped.
+
+For any piece of data, ownership is initially given to the variable that was
+intially assigned that data.  That variable is the owner.  If ownership is not passed
+along, then when that owner goes out of scope (the block ends and the variable
+was not returned) the memory that was used to store that data automatically gets
+returned.
+
+#### Copy vs. Move
 
 ```Rust
-const MAX_POINTS: u32 = 100_000;
+let x = 5;
+ley y = x;
 ```
 
-Note how the common convention of ALL_CAPS snake cased?  Also note that in Rust,
-like Ruby we can use _ to create visual space in our integers (because commas
-are not allowed in ints).
+In the above example, both x and y are equal to 5 and each version of the
+integer 5 has a clear place in the stack - because 5 was copied when we assigned
+x to y.  This is not true of data that's on the heap, which by default is passed
+by reference.  What this means under the hood is that if we assign a new
+variable to data on the heap then that variable is a pointer - that is data on
+the stack that simply points to the real data on the heap. But remember that
+when an owner goes out of scope the memory must be dropped!  What happens if one
+pointer goes out of scope while another pointer stays in scope?  We might get a
+_double free error_!  Rust solves this problem by **invalidating any previous
+references when a new reference is made**.  That means that we can only have
+**one** active pointer to mutable data!
 
-Consts are also valid for **the entire time that your program runs** and will
-not be garbage collected like let's.
+#### Clone
 
-#### Shadowing
+If we want to deeply copy the heap data and not just the stack data, we can use
+the clone method like such:
 
 ```Rust
-fn main() {
-    let x = 5;
+let s1 = String::from("hello");
+let s2 = s1.clone();
 
-    let x = x + 1;
+println!("s1 = {}, s2 = {}", s1, s2);
+```
 
-    let x = x * 2;
+The above works, and we won't get an error that we are calling an invalidated
+pointer like we would if we didn't use clone!
 
-    println!("The value of x is: {}", x);
+#### Transfering Ownership
+
+In Rust Ownership is transfered in two ways:
+1. by passing a variable to another function
+2. By returning a variable at the end of a function
+
+If data is created inside a block, then that data will go out of scope (and have
+it's memory freed) unless it is returned by the block or function.  If we pass a
+variable into a function, it gains ownership and then either returns that
+variable to keep it in memory, or runs the drop function at the end of it's
+scope to drop the data from memory that the variable is in ownership of.
+
+### References and Borrowing
+
+The problem with transfering ownership to a function is that the variable must
+be explicitely returned to keep it's data from dropping, and what if you have to
+return some other value as well from the function?  Instead we can pass a
+reference like so:
+
+```Rust
+let s1 = String::from("hello");
+
+let len = calculate_length(&s1);
+
+println!("The length of {} is {}.", s1, len);
+```
+
+In this example the function 'calculate_length' does not need to return the
+variable passed to it to keep it from dropping because we are passing it a
+reference using '&' syntax.  If we had instead passed just s1 then we would not
+be able to print it out later along with the length, as it would have been
+dropped from memory at the end of calculate_length's scope. Essentially we
+create a pointer to the pointer (s1) which still maintains ownership over the
+data it points to in the heap.
+
+This is referred to as **borrowing**.
+
+#### Mutation and Borrowing
+
+You can't mutate a borrowed value, unless you pass the reference with the
+following syntax:
+
+```Rust
+let mut s = String::from("hello");
+
+change(&mut s);
+```
+
+The one caviat with mutable references is that **you can only have one mutable
+reference to a particular piece of data in a particular scope**.  
+
+One technique to mitigate this challenge is to define a new scope!  A new scope
+can be defined by braces anywhere, like such:
+
+```Rust
+let mut s = String::from("hello");
+
+{
+    let r1 = &mut s;
 }
+
+let r2 = &mut s;
 ```
 
-Note in the above example that we use let multiple times.  Everytime we are
-creating a **new variable called x**.  When we print the value of x, we will get
-the most recent declaration.  In this case that would be 12, as each new
-declaration references the previous x (think of it like a stack)
+Another rule is that you cannot combine mutable and immutable references to the
+same piece of data.  Pick one and stick to it!  Either the data is mutable or
+it's not.
+
+#### Dangling References
+
+A dangling reference is when a reference still exists while it's data has been
+dropped.  This could happen if you have a function that returns a reference to a
+variable that was declared in the function.  At the end of the function, the
+variable goes out of scope and drops it's data, but if a reference is being
+returned then it's a dankling reference.  
+
+Instead, just return the variable itself so you transfer ownership to whomever
+calls the function.
+
+### Slices
+
+Going to try to summarize this pretty quickly because there's not too much to
+it.  A slice is pretty similar to other languages, but in Rust, slices are
+references.  They have a start value (the pointer) and then a length.  You could
+use a string slice to make a substring of a longer string.  For example:
 
 ```Rust
-let mut spaces = "   ";
-spaces = spaces.len();
+let s = String::from("hello world");
+
+let hello = &s[0..5];
+let world = &s[6..11];
 ```
 
-The above code is **illegal** in Rust - even if a variable is declared as
-mutable, we can never mutate a variables **type**.
+#### String literals
 
-## Data Types
+By definition all string literals are actually slices - when your code is
+compiled to binary, your string literals are literally stored in binary, and so
+string literals point to sections of the binary code.
 
-### Scalar
+String literals are of the type &str.  If you wanted to write a function that
+returns a the first word of a String type you could write:
 
-A _scalar_ type represents a **single** value, and can be either: integers,
-floating-point numbers, bools, or chars
+```Rust
+fn first_word(s: &String) -> &str {
+```
 
-#### Integer
+or if we wanted a function that could take slices as well we could write it in
+such a way that if we need to analyze the entire string, we just send the
+function a slice of the String like such:
 
-Numbers without fractional components (non-floats). Can be signed (pos or neg)
-which is i<bit-length> such as i8, i16 etc.  Unsigned (only pos) is u8, u16 etc.
-i32 is the fastest.  Can use _ as visual separators instead of commas 100_000
-rather than 100,000.
-
-#### Floating Point 
-
-Rust uses f32 and f64 for floating point numbers and defaults to f64.  virtually
-the same speed so just use f64.
-
-#### Boolean
-
-Self explanatory - same as any other language
-
-#### Chars
-
-Single characters, like any character on the keyboard, or any unicode character.
-
-### Compound Types
-
-Different from Scalar in that it can represent multiple points of data.  The two
-compound types are arrays or tuples which behave very differently in Rust than
-in Javascript or Python.
+```Rust
+fn first_word(s: &str) -> &str {
+```
 
 #### Arrays
 
-An array is a collection of variables which all have the **same type** and whose
-number of elements is fixed at the time of creation.  elements are processed with bracket notation array[i].
-
-#### Tuples
-
-tuples are collections of variables which can all have different types, and
-whose number of elements is fixed at time of creation. Because they can have
-different types, their types must also be declared at the time of creation:
+We can also take slices of arrays, but again, in Rust a slice will always be a
+reference.  For an array filled with types i32, a slice would have a type of
+&[i32]
 
 ```Rust
-let x: (i32, f64, u8) = (500, 6.4, 1);
+let a = [1, 2, 3, 4, 5];
+
+let slice = &a[1..3];
 ```
-
-Tuples in Rust are weirdly enough not accessed with bracket notation, but with
-dot notation (why make it different?!).  tuple.i <-- I know, weird right?!
-
-## Control Flow
-
-Generally most things here are pretty sensible.  Just going to point out some
-things that differentiate control flow in Rust from other common higher level languages like
-Javascript, Ruby, Python etc.
-
-#### If Expressions
-
-```Rust
-fn main() {
-    let condition = true;
-    let number = if condition {
-        5
-    } else {
-        6
-    };
-
-    println!("The value of number is: {}", number);
-}
-```
-
-In Rust, if's are not statements but **expressions**!  Like ternary's in other
-languages - they return a value and therefore can be assigned to variables.
-Because they are expressions, each **arm** of the if - else if - else
-conditional must return the same type. Because of that, the following would not
-be legal rust code:
-
-```Rust
-fn main() {
-    let condition = true;
-
-    let number = if condition {
-        5
-    } else {
-        "six"
-    };
-
-    println!("The value of number is: {}", number);
-}
-```
-
-^^ the above is **illegal** rust code and will not pass the compiler.  Remember:
-**all arms must be of the same type**.
-
-#### Loops
-
-We can create loops in rust using loop, while, or for.
-
-##### Loop
-
-```Rust
-fn main() {
-    let mut counter = 0;
-
-    let result = loop {
-        counter += 1;
-
-        if counter == 10 {
-            break counter * 2;
-        }
-    };
-
-    assert_eq!(result, 20);
-}
-```
-
-With the **loop** construct, it's similar to a while (true) loop in other
-languages.  In other words, it will continue forever until the code encounters a
-**break**.  A loop is an expression and therefore can return a value to be
-stored in a variable, as seenn above.
-
-##### While
-
-Works as expected
-
-##### For
-
-For loops behave almost identically to ruby syntatically and in function - which
-is functionally very similar to python.  For loops always operate over a
-**range**.  Two ways to do this.  
-
-##### #1:
-```Rust
-fn main() {
-    let a = [10, 20, 30, 40, 50];
-
-    for element in a.iter() {
-        println!("the value is: {}", element);
-    }
-}
-```
-
-In the above code we can see that we use the for...in syntax to iterate over an
-array, by calling an iterator ( using .iter() ) on the array.  This ensures that
-we loop through the array once and cover each item.  
-
-#### #2:
-```Rust
-fn main() {
-    for number in (1..4).rev() {
-        println!("{}!", number);
-    }
-    println!("LIFTOFF!!!");
-}
-```
-
-In the above we define a range using the (start..end) syntax that is also
-commonly seen in ruby, and simply iterate over that range using for...in.
