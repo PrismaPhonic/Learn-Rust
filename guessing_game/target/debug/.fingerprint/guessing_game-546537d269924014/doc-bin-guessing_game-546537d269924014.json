@@ -1,1 +1,0 @@
-{"rustc":14354364314341194204,"features":"[]","target":3208674433387072289,"profile":8950056553182618106,"path":1036222786711178230,"deps":[["rand v0.3.22","rand",13002320883600187013],["rand v0.3.22","rand",7922725239959160286]],"local":[{"Precalculated":"1544333143.402675496s (/home/pmfarr/git/Learn-Rust/guessing_game/src/main.rs)"}],"rustflags":[],"edition":"Edition2015"}
