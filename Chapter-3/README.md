@@ -44,7 +44,7 @@ like Ruby we can use _ to create visual space in our integers (because commas
 are not allowed in ints).
 
 Consts are also valid for **the entire time that your program runs** and will
-not be garbage collected like let's.
+not be dropped when they leave a scope the way that let will.
 
 #### Shadowing
 
