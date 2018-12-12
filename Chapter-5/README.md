@@ -8,6 +8,7 @@
 5. [Unit Like Structs](#unit-like-structs)
 6. [Rectangles](#rectangles)
     1. [Method Syntax](#method-syntax)
+    2. [Associated Functions](#associated-functions)
 
 ## Structs
 
@@ -141,3 +142,72 @@ Methods are exactly what they sound like - ways to describe methods of modifying
 the data they are associated with.  In the case of Rust we declare these with an
 implementation block `impl`.  Even though it's defined outside of the struct,
 `impl` blocks reference the struct that they act on. 
+
+```Rust
+struct Rectangle {
+    width: u32,
+    height: u32,
+}
+
+impl Rectangle {
+    fn area(&self) -> u32 {
+        self.width * self.height
+    }
+}
+
+fn main() {
+    let rect1 = Rectangle { width: 30, height: 50 };
+
+    println!(
+        "The area of the rectangle is {} square pixels.",
+        rect1.area()
+    );
+}
+```
+
+In this example we specify an implementation block that relates to the Rectangle
+struct.  This is very similar to an instance method - note that we have to pass
+a reference to self (the instance) to pass it's fields to the method.
+
+In this example we take &self because we only need to read self - if we wanted
+to mutate self we would pass &mut self.  passing just self is rare as we would
+need to explicitely return it to keep it from dropping.
+
+What if we want to have a method that can reference another instance?  Follow
+this pattern:
+
+```Rust
+impl Rectangle {
+    fn area(&self) -> u32 {
+        self.width * self.height
+    }
+
+    fn can_hold(&self, other: &Rectangle) -> bool {
+        self.width > other.width && self.height > other.height
+    }
+}
+```
+
+and call it like:
+
+```Rust
+println!("Can rect1 hold rect2? {}", rect1.can_hold(&rect2));
+```
+
+#### Associated Functions
+
+These are just like static functions in other languages.  They are called on the
+Type itself and are usually used to construct new instances.  example:
+
+```Rust
+impl Rectangle {
+    fn square(size: u32) -> Rectangle {
+        Rectangle { width: size, height: size }
+    }
+}
+```
+
+By definition an associated function is just an impl that doesn't take self (in
+other words, doesn't act on an instance, but usually returns an instance instead)
+
+
