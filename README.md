@@ -12,4 +12,5 @@ summaries of each chapter.  Chapter 1 is just install so we start on Chapter 2.
 1. [Chapter 2](/Chapter-2/)
 2. [Chapter 3](/Chapter-3/)
 3. [Chapter 4](/Chapter-4/)
-3. [Chapter 5](/Chapter-5/)
+4. [Chapter 5](/Chapter-5/)
+5. [Chapter 6](/Chapter-6/)
