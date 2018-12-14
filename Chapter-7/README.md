@@ -7,6 +7,9 @@
     2. [Pub with Structs vs Enums](#pubs-with-structs-vs-enums)
 3. [The Use Keyword](#the-use-keyword)
     1. [Idiomatic Use](#idiomatic-use)
+    2. [Nested Paths](#nested-paths)
+4. [Separate Modules Into Files](#separate-modules-into-files)
+
 
 ## Cargo
 ### Packages
@@ -226,4 +229,73 @@ fn function2() -> IoResult<()> {
 }
 ```
 
+### Nested Paths
 
+If we are importing multiple things from the same library, there are nice ways
+that we can declare nested paths on one line.  Let's look at one:
+
+```Rust
+use std::{cmp::Ordering, io};
+```
+
+This is the same as typing:
+
+```Rust
+use std::cmp::Ordering;
+use std::io;
+```
+
+Much cleaner to do it on one line, right?  Essentially we declare the common
+path first, and then branches from that common path in {} separated by commas
+for each branch.  
+
+We can also do this if the path of one import is completely shared by the path
+of another by utilizing `self`:
+
+```Rust
+use std::io;
+use std::io::Write;
+```
+
+can become:
+
+```Rust
+use std::io::{self, Write};
+```
+
+### Separate Modules into Files
+
+We can separate modules into different files instead of declaring them all in
+main.rs.  We simply need to put the file that holds the definitions associated
+with our module into it's own file in `src` directory that `main.rs` is in, and
+then link it into main like so:
+
+```Rust
+mod sound;
+
+fn main() {
+    // Absolute path
+    crate::sound::instrument::clarinet();
+
+    // Relative path
+    sound::instrument::clarinet();
+}
+```
+
+When we link it in this way with a semicolon after `mod sound` it tells rust to
+load the contents from a file in the src directory by **the same name**.  Now we
+move the body of sound into src/sound.rs like such:
+
+```
+pub mod instrument {
+    pub fn clarinet() {
+        // Function body code goes here
+    }
+}
+```
+
+If we wanted to take this further and put instrument into it's own file then we
+would need to create a directory in the src/ directory by the name of the parent
+module.  In this case that would be `src/sound` and in that directory put the
+current body of instrument, and change instrument to be linked as just `pub mod
+instrument;`
