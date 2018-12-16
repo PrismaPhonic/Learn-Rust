@@ -2,16 +2,17 @@
 
 # Table of Contents
 1. [Vectors](#vectors)
-  1. [Accessing Elements](#accessing-elements)
-  2. [Iterating Vectors](#iterating-vectors)
-  3. [Vectors With Varying Types](#vectors-with-variant-types)
+ 1. [Accessing Elements](#accessing-elements)
+ 2. [Iterating Vectors](#iterating-vectors)
+ 3. [Vectors With Varying Types](#vectors-with-variant-types)
 2. [Strings](#strings)
-  1. [Updating Strings](#updating-strings)
-  2. [Concatenation](#concatenation)
-  3. [Indexing](#indexing)
-  4. [Iteration](#iteration)
+ 1. [Updating Strings](#updating-strings)
+ 2. [Concatenation](#concatenation)
+ 3. [Indexing](#indexing)
+ 4. [Iteration](#iteration)
 3. [HashMaps](#hashmaps)
-  1. [HashMaps and Ownership](#hashmaps-and-ownership)
+ 1. [HashMaps and Ownership](#hashmaps-and-ownership)
+ 2. [Initialize or Increment](#initialize-or-increment)
 
 ## Collections	
 ### Vectors
@@ -51,9 +52,9 @@ v.push(5);
 There are two ways we can access elements from a vector:
 
 1. An easy way that will crash your program if someone tries to access a value
-  outside of the bounds of the vector
+ outside of the bounds of the vector
 2. A harder way that will return None Option<&T> type and not crash your
-  program, where you can handle it gracefully.
+ program, where you can handle it gracefully.
 
 Let's look at the easy (but crash prone) way:
 
@@ -72,8 +73,8 @@ let v = vec![1, 2, 3, 4, 5];
 let v_index = 2;
 
 match v.get(v_index) {
-  Some(_) => { println!("Reachable element at index: {}", v_index); },
-  None => { println!("Unreachable element at index: {}", v_index); }
+ Some(_) => { println!("Reachable element at index: {}", v_index); },
+ None => { println!("Unreachable element at index: {}", v_index); }
 }
 ```
 
@@ -109,7 +110,7 @@ We can iterate through vectors with a simple for loop:
 ```Rust
 let v = vec![100, 32, 57];
 for i in &v {
-  println!("{}", i);
+ println!("{}", i);
 }
 ```
 
@@ -119,7 +120,7 @@ can do it like such:
 ```Rust
 let mut v = vec![100, 32, 57];
 for i in &mut v {
-  *i += 50;
+ *i += 50;
 }
 ```
 
@@ -136,15 +137,15 @@ varying type is a member of the enum. Like such:
 
 ```Rust
 enum SpreadsheetCell {
-  Int(i32),
-  Float(f64),
-  Text(String),
+ Int(i32),
+ Float(f64),
+ Text(String),
 }
 
 let row = vec![
-  SpreadsheetCell::Int(3),
-  SpreadsheetCell::Text(String::from("blue")),
-  SpreadsheetCell::Float(10.12),
+ SpreadsheetCell::Int(3),
+ SpreadsheetCell::Text(String::from("blue")),
+ SpreadsheetCell::Float(10.12),
 ];
 ```
 
@@ -215,12 +216,12 @@ let s = format!("{}-{}-{}", s1, s2, s3);
 
 Want to access an index in a string? In many higher level languages you can do
 this without a thought! But Rust exposes what goes on under the hood and
-strings are much more complicated than most developers think! Strings are vec(u8) under the hood.  The problem is that non-english letters can often takes up more bytes than english letters.  The old standard of one byte per character doesn't hold up, and UTF-8 can be anywhere from 1 to 8 bytes per character.  Do you want an index by bytes, which can sometimes land between characters?  Unlikely.  What about by chars?  That seems reasonable and is what most languages would do, but can also be problematic with langauges that have accent chars that overlap with other chars. What might seem like a string of 4 characters might actually by 8 characters long, and some of those characters (like accents) should be pakaged with their relevant character to form what we as humans think of as a **letter**.  For these reasons we have to be more explicit with how we traverse a string in rust.  We can think of it as three options:
+strings are much more complicated than most developers think! Strings are vec(u8) under the hood. The problem is that non-english letters can often takes up more bytes than english letters. The old standard of one byte per character doesn't hold up, and UTF-8 can be anywhere from 1 to 8 bytes per character. Do you want an index by bytes, which can sometimes land between characters? Unlikely. What about by chars? That seems reasonable and is what most languages would do, but can also be problematic with langauges that have accent chars that overlap with other chars. What might seem like a string of 4 characters might actually by 8 characters long, and some of those characters (like accents) should be pakaged with their relevant character to form what we as humans think of as a **letter**. For these reasons we have to be more explicit with how we traverse a string in rust. We can think of it as three options:
 
 1. Access by bytes (unlikely you'd ever want this)
 2. Access by char (perhaps you want this if only standard english chars?) 
 3. Access by graphene clusters (will always get you what we think of as a
-   'letter') - this requires importing an external crate
+  'letter') - this requires importing an external crate
 
 Let's look at how we can iterate over strings in more detail
 
@@ -231,7 +232,7 @@ First, by char (which with some languages won't always get you 'letters'):
 
 ```Rust
 for c in "नमस्ते".chars() {
-    println!("{}", c);
+  println!("{}", c);
 }
 ```
 
@@ -246,7 +247,7 @@ This will print out:
 े
 ```
 
-Now let's look at how to do this for graphenes.  We have to install the external
+Now let's look at how to do this for graphenes. We have to install the external
 crate `unicode-segmentation`, and then import it and use it like such:
 
 ```Rust
@@ -255,18 +256,18 @@ extern crate unicode_segmentation;
 use unicode_segmentation::UnicodeSegmentation;
 
 fn main() {
-   for c in "नमस्ते".graphemes(true).collect::<Vec<&str>>() {
-       println!("{}", &c);
-   }
+  for c in "नमस्ते".graphemes(true).collect::<Vec<&str>>() {
+    println!("{}", &c);
+  }
 }
 ```
 
-That's it for Strings!  Let's talk now about Hash Maps!
+That's it for Strings! Let's talk now about Hash Maps!
 
 ## HashMaps
 
 HashMaps are just like other languages - they are a mapping of keys to values
-using a hash algorithm.  Let's look at how we can create a new HashMap and
+using a hash algorithm. Let's look at how we can create a new HashMap and
 insert some key/value pairs;
 
 ```Rust
@@ -279,7 +280,7 @@ scores.insert(String::from("Yellow"), 50);
 ```
 
 We first import HashMap from the standard collections library and then generate
-a new HashMap with `HashMap::new()`.  Then we insert with `instance.insert(key,
+a new HashMap with `HashMap::new()`. Then we insert with `instance.insert(key,
 value);
 
 ### HashMaps and Ownership
@@ -297,9 +298,45 @@ map.insert(field_name, field_value);
 ```
 
 In this example map has taken ownership of `field_name` and `field_value` when
-they are inserted into map.  We cannot use field_name and field_value anymore.
+they are inserted into map. We cannot use field_name and field_value anymore.
 An alternative is to pass in a reference instead, but doing so means we also
 have to validate that the data being referenced will exist for the **lifetime**
 of the map's existence (using a feature called lifetimes).
 
+### Initialize or Increment
 
+Very often we need to either initialize a key with a count or increment the
+existing count at a key. This is a common tactic when building a **frequency
+counter**. Let's use a simple example of counting all the words in a paragraph:
+
+```Rust
+use std::collections::HashMap;
+
+fn main() {
+  let alice = "Either the well was very deep, or she fell very slowly, for she had plenty of time as she went down to look about her and to wonder what was going to happen next.";
+
+  let mut map = HashMap::new();
+
+  for word in alice.split_whitespace() {
+    *map.entry(word).or_insert(0) += 1;
+  }
+
+  println!("{:#?}", map);
+}
+```
+
+In this example we are using entry(key).or_insert(value) - a fabulous built in
+method that checks if a key already exists in our hashmap, and otherwise inserts
+an initial value. In this example we are dereferencing map so we can increment
+it within this loop cycle. This essentially sets a word count at 0 if it
+doesn't exist yet and then regardless increments the value by 1 - this counts up
+the frequency of words in our sample text from alice in wonderland.
+
+Why do we have to dereference before we increment? If we were to simply try to
+increment without the dereference then we would be changing the **memory
+address** for the key, but what we really want to do is change the **value** at
+the memory address. The entry method itself returns a mutable reference to the
+value, which is a **pointer**. We meed to follow the pointer to the actual data - by using the dereferene operator preceding the variable name. 
+
+I've gone ahead and completed all three sample exercises from the end of this
+chapter and included them in this folder

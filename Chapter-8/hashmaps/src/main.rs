@@ -1,16 +1,13 @@
 use std::collections::HashMap;
 
 fn main() {
-    let field_name = String::from("Favorite color");
-    let field_value = String::from("Blue");
+    let alice = "Either the well was very deep, or she fell very slowly, for she had plenty of time as she went down to look about her and to wonder what was going to happen next.";
 
     let mut map = HashMap::new();
-	map.insert(field_name, field_value);
 
-    // the bottom is to test using variables that are out of scope
-    // due to map taking ownership on insert
+    for word in alice.split_whitespace() {
+        *map.entry(word).or_insert(0) += 1;
+    }
 
-    println!("This shouldn't print {}", field_value);
+    println!("{:#?}", map);
 }
-
-
