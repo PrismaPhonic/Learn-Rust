@@ -1,0 +1,11 @@
+[package]
+name = "traits"
+version = "0.1.0"
+authors = ["Peter Farr <Peter@PrismaPhonic.com>"]
+edition = "2018"
+
+[lib]
+name = "traits"
+path = "src/lib.rs"
+
+[dependencies]
