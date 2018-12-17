@@ -9,6 +9,7 @@
 2. [Traits](#traits)
     1. [Defining A Trait](#defining-a-trait)
     2. [Trait Bounds](#trait-bounds)
+        1. [Conditionally Implement Methods](#conditionally-implement-traits)
 
 # Generic Data Types
 
@@ -220,3 +221,15 @@ fn some_function<T, U>(t: T, u: U) -> i32
 {
 ```
 
+### Conditionally Implement Methods
+
+We can use trait bounds to conditionally implement a trait for any type that
+implements another trait.  This is called a _blanket implementation_ and is how
+to_string() is implemented in the standard library.  Let's take a look:
+
+```Rust
+imp<T: Display> ToString for T {
+```
+
+This specifies that any type that implements the Display trait can use the
+to_string() method. 
