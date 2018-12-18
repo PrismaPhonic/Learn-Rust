@@ -9,7 +9,12 @@
 2. [Traits](#traits)
     1. [Defining A Trait](#defining-a-trait)
     2. [Trait Bounds](#trait-bounds)
-        1. [Conditionally Implement Methods](#conditionally-implement-traits)
+        1. [Conditionally Implement Methods](#conditionally-implement-methods)
+3. [Lifetimes](#lifetimes)
+    1. [Lifetime Annotation Syntax](#lifetime-annotation-syntax)
+    2. [Lifetime Annotations in Structs](#lifetime-annotations-in-structs)
+    3. [Lifetime Rules](#lifetime-rules)
+    4. [Lifetime Parameters](#lifetime-parameters)
 
 # Generic Data Types
 
@@ -233,3 +238,126 @@ imp<T: Display> ToString for T {
 
 This specifies that any type that implements the Display trait can use the
 to_string() method. 
+
+# Lifetimes
+
+What are lifetimes?  They are a way for us to explicitely tell the compiler how
+long a variable will stay in scope. We only have to supply lifetimes when there
+is ambiguity about how long a borrowed variable will stay _alive_.  Let's look
+at an example:
+
+```Rust
+fn longest(x: &str, y: &str) -> &str {
+    if x.len() > y.len() {
+        x
+    } else {
+        y
+    }
+}
+```
+
+The above code will not compile because the compiler can't tell if the borrowed
+reference being **returned** refers to x, or y.  We don't know either, and
+because it's lifetime (how long it will stay in memory) is not explicitely
+deterministic and can't be **garaunteed** the compiler throws up and tells us
+that we need to specify how long the lifetime will be.  Let's fix this:
+
+```Rust
+fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
+    if x.len() > y.len() {
+        x
+    } else {
+        y
+    }
+}
+```
+
+This tells us that for some lifetime `'a`, our function takes two parameters
+which both have the **same** lifetime, which is also shared by our return slice.
+The compiler doesn't need to know exactly how long x and y will live for, just
+that there is some scope that can be substituted for 'a that is truthy. Once
+interpreted by the compiler, the compiler will assign a concrete lifetime that
+is equal to the smaller of the two lifetimes of x and y, and if the return value
+does not satisfy the smaller of the two lifetimes - it won't compile either.  We
+need to be **truthful** and help to clear up ambiguity for our compiler.
+
+Let's look at lifetime annotation syntax
+
+## Lifetime Annotation Syntax
+
+We specify lifetimes using an `'` followed by a simple lowercase english
+character, such as `'a`.  Here are some examples:
+
+```Rust
+&i32        // a reference
+&'a i32     // a reference with an explicit lifetime
+&'a mut i32 // a mutable reference with an explicit lifetime
+```
+
+Let's look at how to specify lifetimes in struct definitions.
+
+## Lifetime Annotations in Structs 
+
+Indicating lifetimes in the definition of a struc  is a bit different.  We put
+it in the same place we would declare a generic type.  Like such:
+
+```Rust
+struct ImportantExcerpt<'a> {
+    part: &'a str,
+}
+
+fn main() {
+    let novel = String::from("Call me Ishmael. Some years ago...");
+    let first_sentence = novel.split('.')
+        .next()
+        .expect("Could not find a '.'");
+    let i = ImportantExcerpt { part: first_sentence };
+}
+```
+
+We need to speficy a lifetime here because we are feeding in a string slice
+which is **not** owned, and so we have to assure rust that the slice will exist
+for as long as the lifetime of the struct (and it does in this example.  The
+struct and the slice go out of scope at the exact same time - at the end of the
+function block)
+
+### Lifetime Rules
+
+Why haven't we had to supply lifetime annotations for every single function
+until now?  Well, Rust's compiler will infer lifetime by applying **three**
+simple rules:
+
+1. Each parameter that is a reference gets it's own lifetime parameter
+
+That means a function with one parameter gets one lifetime parameter `fn
+foo<'a>(x: &'a i32)`, with two parameters it gets auto assigned two lifetimes
+`fn foo<'a>(x: &'a i32, y: &'b i32) and so on.
+
+2. If there is **exactly one** input lifetime parameter, that lifetime is assigned
+   to all output lifetime parameters
+3. If there are multiple input lifetime parameters, but one of them is `&self`
+   (like in a method) then the lifetime of self is assigned to **all** output
+lifetime parameters.
+
+Because of rule #3 this means that we rarely need to specify lifetime parameters
+on methods!  
+
+### Lifetime Annoations on Methods
+
+If we do need to be explicit about lifetimes in method definitions, we define
+them similarly to how we define generic types in `impl` blocks:
+
+```Rust
+impl<'a> ImportantExcerpt<'a> {
+    fn level(&self) -> i32 {
+        3
+    }
+}
+```
+
+In this example (and nearly all cases where a method takes &self) we don't have
+to specify lifetimes in the function itself because of rule #3.
+
+
+})
+}
