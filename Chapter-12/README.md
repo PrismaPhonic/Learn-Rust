@@ -2,6 +2,7 @@
 
 # Table of Contents
 1. [Reading Console Arguments](#reading-console-arguments)
+1. [Reading a File](#reading-a-file)
 
 # Minigrep Project
 
@@ -35,5 +36,31 @@ fn main() {
 As I mentioned the first index in the collection will be the filename so we
 store the second index as the query (what the user will search for in our grep
 clone) and then the next argument is stored as the filename to search.
+
+## Reading a File
+
+Next we need to adapt the program so it can read a file.  To do that we need to
+import `std::fs` from the standard library which has a function on it called
+`read_to_string`:
+
+```Rust
+use std::env;
+use std::fs;
+
+fn main() {
+    // --snip--
+    println!("In file {}", filename);
+
+    let contents = fs::read_to_string(filename)
+        .expect("Something went wrong reading the file");
+
+    println!("With text:\n{}", contents);
+}
+```
+
+We use `expect` because if you remember `expect` is just like `unwrap` except it
+let's us set the panic message.  This is not a great way to do error handling
+but it let's us build the app quick and dirty, and we can come back to clean up
+the error handling later.
 
 
