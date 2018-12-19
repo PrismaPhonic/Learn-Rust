@@ -6,6 +6,10 @@
     2. [Assert Types](#assert-types)
     3. [Bringing Functions into Test Scope](#bringing-functions-into-test-scope)
     4. [Ensuring Panic on Errors](#ensuring-panic-on-errors)
+    5. [Running Tests](#running-tests)
+    6. [Organizing Tests](#organizing-tests)
+    7. [Integration Tests](#integration-tests)
+        1. [Submodules in Integration Tests](#submodules-in-integration-tests)
 
 # Testing
 
@@ -150,4 +154,76 @@ fn greater_than_100() {
 }
 ```
 
+## Running Tests
 
+We can run tests in parallel (default) or in series.  To limit testing to only
+run in series we can run it with `cargo test -- --test-threads=1`.  Sometimes
+functions will print output the screen which we will see when our tests run
+along with the test results.  To not show this output we can pass the
+`--nocapture` flag like such: `$ cargo test -- --nocapture`.  To run only a
+specific test by it's name then we can pass that in implicitely.  If we had a
+test function by the name of `one_hundred` we could run a test just on that with
+`cargo test one_hundred`. If we would like to put a test into an 'ignore' group
+that will be ignored by default, we can add an `#[ignore]` annotation above it
+(but below the tests `#[test]` annotation).  Then any tests with this annotation
+will not be run by default when we type `cargo test` in our terminal.  If we
+want to run tests in our ignore group we can pass the `ignored` flag, such as:
+`$ cargo test -- --ignored`.
+
+## Organizing Tests
+
+By convention we should create a **module** name `tests` in every file of our
+project that contains our test functions, and to annotate the module with
+`#[cfg(test)]`.  This annotation tells rust to skip compiling the test code when
+we run `cargo build` and only run the test code when we type `cargo test`. 
+
+## Integration Tests
+
+When we want to run integration tests it's convention to put our integration
+tests in a tests **folder**. Make a test directory at the base of your project
+folder called `tests` (exactly that).  Then put your integration tests in a
+file.  When we do this we don't have to include a `#[cfg(test)]` because rust
+knows that any files inside a `tests` folder are integration tests.  We will
+need to bring into scope the function that we plan to test, like such:
+
+```Rust
+use adder;
+
+#[test]
+fn it_adds_two() {
+    assert_eq!(4, adder::add_two(2));
+}
+```
+
+We used `use adder` to bring the adder crate into scope, and then called add_two
+by typing `adder::add_two` which is a pub function that lives in our adder crate
+in `lib.rs`.  We can only import functions from `lib.rs` as this is intended for
+our local library. If our function is in `main.rs` then they are part of our
+binary and can't be brought in for testing.  This is why it is common practice
+to write nearly all your functions in `lib.rs` and have a very _dry_ main
+function that kicks off your program running.  
+
+### Submodules in Integration Tests
+
+What if we want a setup file to set up our testing environment?  One way we can
+do this is to make a folder named `common` inside `tests` and inside that put a
+file called `mod.rs`.  Rust will understand this to mean that we have a module
+named common (almost as if we named it `common.rs`) and that module is not a
+test itself.  We can do whatever we need to setup the test environment there,
+and then we can bring it into scope in our tests like such:
+
+```Rust
+use adder;
+
+mod common;
+
+#[test]
+fn it_adds_two() {
+    common::setup();
+    assert_eq!(4, adder::add_two(2));
+}
+```
+
+We are calling a setup function before we use `assert_eq!` which will setup our
+test environment for us.  Unfortunately as far as I can tell Rust does not `yet`
+have something similar to `beforeeach` like the beauty that is jest.  
