@@ -7,6 +7,8 @@
     1. [Making a Config Struct](#making-a-config-struct)
         2. [Making a Constructor](#making-a-constructor)
 4. [Fixing Error Handling](#fixing-error-handling)
+5. [Extracting to Our Library](#extracting-to-our-library)
+6. [Test Driven Development](#test-driven-development)
 
 # Minigrep Project
 
@@ -219,4 +221,207 @@ fn main() {
 
 nice!
 
+## Extracting to our Library
 
+Lastly we want to extract nearly all of our logic to functions that live in our
+library `lib.rs` so we can test them.  We will make main very dry and have our
+other functions pass errors back to main where they will be handled.
+
+```Rust
+fn main() {
+    // --snip--
+
+    println!("Searching for {}", config.query);
+    println!("In file {}", config.filename);
+
+    run(config);
+}
+
+fn run(config: Config) {
+    let contents = fs::read_to_string(config.filename)
+        .expect("something went wrong reading the file");
+
+    println!("With text:\n{}", contents);
+}
+
+// --snip--)))
+```
+
+Now we'll setup our `run` function to return our errors to main:
+
+```Rust
+use std::error::Error;
+
+// --snip--
+
+fn run(config: Config) -> Result<(), Box<dyn Error>> {
+    let contents = fs::read_to_string(config.filename)?;
+
+    println!("With text:\n{}", contents);
+
+    Ok(())
+}
+```
+
+Now we change main to handle what we are returning from `run`:
+
+```Rust
+fn main() {
+    // --snip--
+
+    println!("Searching for {}", config.query);
+    println!("In file {}", config.filename);
+
+    if let Err(e) = run(config) {
+        println!("Application error: {}", e);
+
+        process::exit(1);
+    }
+}
+```
+
+Why did we use `if let`?  If you remember from the chapter on match, `if let` is
+a shortcut to deal with a single match arm if we only care about one arm.  In
+this case our run function returns `()` if it's successful or `Err` if we got an
+error.  We can handle error explicitly rather than using `unwrap` because we
+don't care about unwrapping the `Ok` response in the event of a success.
+
+We now move all of our code except for `main` into our `src/lib.rs` file:
+
+```Rust
+use std::error::Error;
+use std::fs;
+
+pub struct Config {
+    pub query: String,
+    pub filename: String,
+}
+
+impl Config {
+    pub fn new(args: &[String]) -> Result<Config, &'static str> {
+        // --snip--
+    }
+}
+
+pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
+    // --snip--
+}
+```
+
+Now we have to go back to `src/main.rs` and bring our functions into scope in
+`main`:
+
+```Rust
+
+
+use std::env;
+use std::process;
+
+use minigrep;
+use minigrep::Config;
+
+fn main() {
+    // --snip--
+    if let Err(e) = minigrep::run(config) {
+        // --snip--
+    }
+}
+```
+
+## Test Driven Development
+
+Let's add some tests.  The process for test driven development is:
+
+1. Write a test for a new function/method you will write and make sure it fails
+2. Write or modify just enough code until the test passes.
+3. Refactor your code and make sure your code still passes
+4. Rinse and repeat
+
+So we'll start from step one:
+
+### Write a Test
+
+We'll write a test for a new function we haven't written yet called `search`
+that will take a query and contents and return a vector of positive matches:
+
+```Rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn one_result() {
+        let query = "duct";
+        let contents = "\
+Rust:
+safe, fast, productive.
+Pick three.";
+
+        assert_eq!(
+            vec!["safe, fast, productive."],
+            search(query, contents)
+        );
+    }
+}
+```
+
+This goes in our `lib.rs` file, and we bring all of our public functions into
+scope by writing `use super::*` inside of our tests module.  
+
+We now need to write a function declaration and return a placeholder so we have
+enough of a function to run the test (and have it fail, rather than the compiler
+yell at us):
+
+```Rust
+fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
+    vec![]
+}
+```
+
+Because this is not a method and we have two inputs, the compiler doesn't know
+which of the input lifetimes to apply to our return type - so we specify that it
+will be the same as contents.  This is because we are taking slices of strings
+from contents (the matches) and returning those in a vector - so the lifetimes
+of contents and our return will match.
+
+### Fixing our Code
+
+When we run our tests now with `cargo test` they definitely fail! (that's a good
+thing right now)  Let's fix that:
+
+```Rust
+fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
+    let mut results = Vec::new();
+
+    for line in contents.lines() {
+        if line.contains(query) {
+            results.push(line);
+        }
+    }
+
+    results
+}
+```
+
+We create a new mutable vector to hold our matches and then simply iterate
+through each line of contents (this is the file contents).  Then we just do a
+simple `contains` to see if the string contains that match pattern and if so
+push that line to the results vector which we return at the end of the function.
+
+Now our tests pass! Let's go ahead and actually use our new function by making
+run use our search function:
+
+```Rust
+pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
+    let contents = fs::read_to_string(config.filename)?;
+
+    for line in search(&config.query, &contents) {
+        println!("{}", line);
+    }
+
+    Ok(())
+}
+```
+
+Perfect!  Now our grep clone actually works and will return search matches
+correctly!
