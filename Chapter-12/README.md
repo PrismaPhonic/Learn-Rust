@@ -1,4 +1,4 @@
-# Chapter 11
+# Chapter 12
 
 # Table of Contents
 1. [Reading Console Arguments](#reading-console-arguments)
@@ -9,6 +9,8 @@
 4. [Fixing Error Handling](#fixing-error-handling)
 5. [Extracting to Our Library](#extracting-to-our-library)
 6. [Test Driven Development](#test-driven-development)
+    1. [Write a Test](#write-a-test)
+    2. [Fix our Code](#fix-our-code)
 
 # Minigrep Project
 
