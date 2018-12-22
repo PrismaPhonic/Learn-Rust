@@ -11,6 +11,7 @@
 6. [Test Driven Development](#test-driven-development)
     1. [Write a Test](#write-a-test)
     2. [Fix our Code](#fix-our-code)
+7. [Working with Environment Variables](#working-with-environment-variables)
 
 # Minigrep Project
 
@@ -427,3 +428,110 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
 Perfect!  Now our grep clone actually works and will return search matches
 correctly!
+
+## Working with Environment Variables
+
+We'll now get some practice working with environment variables.  For this
+exercise we wrote a simple function very similar to our `search` function that
+does case insensitive search. The pattern difference is trivial and if you've
+coded in any other language before you'll immediately recognize the pattern of
+using `to_lowercase` on the input and search match:
+
+```Rust
+fn search_case_insensitive<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
+    let query = query.to_lowercase();
+    let mut results = Vec::new();
+
+    for line in contents.lines() {
+        if line.to_lowercase().contains(&query) {
+            results.push(line);
+        }
+    }
+
+    results
+}
+```
+
+Then we need to modify our `Config` struct to have an additional field that will
+store a boolean representing whether a user requests a case insensitive search
+or not:
+
+```Rust
+pub struct Config {
+    pub query: String,
+    pub filename: String,
+    pub case_sensitive: bool,
+}
+```
+
+Perfect!  Now we we just need to modify run to check if the instance of config
+it receives and run case sensisitve or insensitive search per the environment
+variable set by the user:
+
+```Rust
+pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
+    let contents = fs::read_to_string(config.filename)?;
+
+    let results = if config.case_sensitive {
+        search(&config.query, &contents)
+    } else {
+        search_case_insensitive(&config.query, &contents)
+    };
+
+    for line in results {
+        println!("{}", line);
+    }
+
+    Ok(())
+}
+```
+
+The only thing a little tricky here if you are used to higher level languages is
+to think of rusts `if` statements as not statements (they aren't!), but as
+**expressions**, just like ternarys in other languages.
+
+Lastly we need to change our method on `Config` to check for the **presence** of
+our choosen environment variable.  All that we care about is if the environment
+variable exists, we actually don't care at all about it's value:
+
+```Rust
+use std::env;
+
+// --snip--
+
+impl Config {
+    pub fn new(args: &[String]) -> Result<Config, &'static str> {
+        if args.len() < 3 {
+            return Err("not enough arguments");
+        }
+
+        let query = args[1].clone();
+        let filename = args[2].clone();
+
+        let case_sensitive = env::var("CASE_INSENSITIVE").is_err();
+
+        Ok(Config { query, filename, case_sensitive })
+    }
+}
+```
+
+We first bring in `std::env` so we can use `env::var` which checks for an
+environment variable for us.  This returns a `Result` which if we remember can
+be either `Ok` or `Err`.  Since we only care about the environment variable
+existing at all, we can simply use `is_err()` method on the `Result` struct that
+is returned, which will store a boolean response in our new variable
+`case_sensitive`.  Note that we've flipped the logic here - as evidence by how
+our variable name is the opposite of our environment variable.  
+
+And that's it!  We can test it like so and it works:
+
+```terminal
+$ CASE_INSENSITIVE=1 cargo run to poem.txt
+    Finished dev [unoptimized + debuginfo] target(s) in 0.0 secs
+     Running `target/debug/minigrep to poem.txt`
+Are you nobody, too?
+How dreary to be somebody!
+To tell your name the livelong day
+To an admiring bog!
+```
+
