@@ -12,6 +12,7 @@
     1. [Write a Test](#write-a-test)
     2. [Fix our Code](#fix-our-code)
 7. [Working with Environment Variables](#working-with-environment-variables)
+8. [Sending Errors to stderr](#sending-errors-to-stderr)
 
 # Minigrep Project
 
@@ -535,3 +536,46 @@ To tell your name the livelong day
 To an admiring bog!
 ```
 
+## Sending Errors to stderr
+
+Right now we are printing all our errors to the console with `println!` macro,
+which only ever sends errors to standard out.  That means if we are sending our
+output to a file and there's an error, that error will populate our output file.
+If we run this:
+
+```terminal
+$ cargo run > output.txt
+```
+
+and we look at our file we will see the error in it:
+
+```terminal
+$ cat output.txt
+Problem parsing arguments: not enough arguments
+```
+
+That's not good!  What can we do?
+
+We can use `eprintln!` macro instead to send our errors to stderr which will hit
+the terminal but not send to stdout and hit an output stream.  It's a pretty
+simple change since we pass all our errors back to `main.rs`:
+
+```Rust
+fn main() {
+    let args: Vec<String> = env::args().collect();
+
+    let config = Config::new(&args).unwrap_or_else(|err| {
+        eprintln!("Problem parsing arguments: {}", err);
+        process::exit(1);
+    });
+
+    if let Err(e) = minigrep::run(config) {
+        eprintln!("Application error: {}", e);
+
+        process::exit(1);
+    }
+}
+```
+
+And we are done!  Now our terminal application will only send a successful
+output to stdout and we won't see errors hitting our output streams.
