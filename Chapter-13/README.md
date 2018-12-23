@@ -12,6 +12,8 @@
     3. [Iterator Adapters](#iterator-adapters)
     4. [Using Closures to Capture](#using-closures-to-capture)
     5. [Creating our Own Iterators](#creating-our-own-iterators)
+3. [Improving Minigrep](#improving-minigrep)
+    1. [Using Iterator Adapters](#using-iterator-adapters)
 
 # Closures 
 In Rust a closure is in anonymous function, similar to a lamda function in
@@ -482,4 +484,99 @@ counter that counts from 1 to 5 using an iterator.  Because we have implemented
 `Iterator` on our custom type we can now chain other `Iterator` methods on top,
 as evidenced by the last test.
 
+## Improving Minigrep
 
+Now that we've learned about closures and iterators let's use them to improve
+our minigrep project.  Right now our `Config` struct takes in a string slice and
+we use clone on the slices to get the arguments out so we can return an instance
+of `Config` that owns it's values:  
+
+```Rust
+impl Config {
+    pub fn new(args: &[String]) -> Result<Config, &'static str> {
+```
+
+This is wastful. We have no need to keep two deep copies in memory of user supplied arguments. Let's improve upon this.  If we look back at what we are doing in `main.rs` we can see that we collect args into a vector and then pass a slice to the function. Why are we collecting it into a vector? Because `env::args()` returns an iterator! Let's just pass the iterator in and work with it directly so we can grab ownership over the arguments rather than cloning.  Here's what our `main.rs` looks like right now:
+
+```Rust
+fn main() {
+    let args: Vec<String> = env::args().collect();
+
+    let config = Config::new(&args).unwrap_or_else(|err| {
+        eprintln!("Problem parsing arguments: {}", err);
+        process::exit(1);
+    });
+
+    // --snip--
+}
+```
+
+We simply pass `env::args()` in directly instead:
+
+```Rust
+fn main() {
+    let config = Config::new(env::args()).unwrap_or_else(|err| {
+        eprintln!("Problem parsing arguments: {}", err);
+        process::exit(1);
+    });
+
+    // --snip--
+}
+```
+
+Now we need to change the function signature for `fn new` in our Config `impl` block so that args is of the type we are being given.  But what is that type anyways?  If we look at the docs we'll see that `std::env::args()` returns an iterator of type `std::env::Args` so we'll specify that as the type of our input.  
+```Rust
+impl Config {
+    pub fn new(mut args: std::env::Args) -> Result<Config, &'static str> {
+        args.next();
+
+        let query = match args.next() {
+            Some(arg) => arg,
+            None => return Err("Didn't get a query string"),
+        };
+
+        let filename = match args.next() {
+            Some(arg) => arg,
+            None => return Err("Didn't get a file name"),
+        };
+
+        let case_sensitive = env::var("CASE_INSENSITIVE").is_err();
+
+        Ok(Config { query, filename, case_sensitive })
+    }
+}
+```
+
+We also put `mut` before args so we are storing a mutable copy of args so that way we can own the iterator (necessary or each call of next would not be able to consume the previous iteration).  Now we call next immediately to get passed the first argument which is always the filename.  We use a couple match statements to extract owned copies of the query and filename arguments - returning errors if the arguments were not supplied.  The rest of this function hasn't changed.  
+
+### Using Iterator Adapters
+
+Lastly let's clean up our `search` function by using iterator adapters.  Here's what it used to look like:
+
+```Rust
+pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
+    let mut results = Vec::new();
+
+    for line in contents.lines() {
+        if line.contains(query) {
+            results.push(line);
+        }
+    }
+
+    results
+}
+```
+
+We can clean this up and help to improve our state management.  Currently we create an intermediate `results` vector that is mutable. This could create issues with managing concurrancy if later on we decide to setup parallel processing for our search functionality. If we use iterator adapters we can do the work of returning matching lines without creating an intermediate mutable state that might need to be shared by multiple threads. Let's see what a better solution looks like:
+
+```Rust
+pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
+    contents.lines()
+        .filter(|line| line.contains(query))
+        .collect()
+}
+```
+
+Here we use a string literal method called `lines` that returns an iterator over the lines of a string as string slices. We then use the `filter` iterator adapter to act on each of those lines and return the ones that contain our query. We lastly use collect to collect this into a vector because iterator adapters don't consume the iterator for us.  Because we didn't add a semicolon `;` at the end this output is implicitely returned.  Cool huh?
+
+One final word on closures and iterators: They are highly optimized and though they feel like a higher level abstraction they are zero cost abstractions.  That means that they are just as performant as if you wrote the assembly code yourself in the most efficient way possible. So feel free to use them without worry about performance hits!
