@@ -7,6 +7,11 @@
         1. [Modifying Cacher to use Generics](#modifying-cacher-to-use-generics)
     1. [Capturing Lexical Environment](#capturing-lexical-environment)
 2. [Iterators](#iterators)
+    1. [Creating Iterators](#creating-iterators)
+    2. [Methods that Consume Iterators](#methods-that-consume-iterators)
+    3. [Iterator Adapters](#iterator-adapters)
+    4. [Using Closures to Capture](#using-closures-to-capture)
+    5. [Creating our Own Iterators](#creating-our-own-iterators)
 
 # Closures 
 In Rust a closure is in anonymous function, similar to a lamda function in
@@ -301,3 +306,180 @@ next line in our `println!` statement.
 Now that we've covered closures well, let's move onto iterators!
 
 # Iterators
+
+Iterators are a way to iterate over each item of a sequence.  They are much
+more efficient than loops and can be customized.  Iterators either return
+`Some(&T)` when we are iterating over the sequence or `None` when we've gotten
+to the end and there's nothing left to iterate over.  We can call the next
+iteration (iterators are lazy loaded) using `.next()`.  
+
+## Creating Iterators
+
+Calling an interator with `iter()` method will give us an iterator that itself is mutable (the iterator consumes itself each round) but returns a reference (read only) to each item in our sequence.  If we want to get an owned copy of each item we can call `into_iter()`.  If we need mutable copies as we iterate we can call `iter_mut` instead.
+
+## Methods that Consume Iterators
+
+Iterators that call `next` are called _consuming adapters_ because calling them
+uses up the iterator (stole this line straight from the book, but it's a good
+one).  That means that we can't use the iterator again after using a consuming
+adapter.  One such consuming adapter is the `sum` method:
+
+```Rust
+let v1 = vec![1, 2, 3];
+let v1_iter = v1.iter();
+let total: i32 = v1_iter.sum();))]
+
+println!('Here's your iterator: {:?}', v1_iter) // this line won't run
+```
+
+See that last line I threw in?  It will keep rust from compiling this code
+because we are trying to access an iterator after `sum` has already taken
+**ownership** of it because `sum` is a _consuming adapter_.
+
+## Iterator Adapters
+
+Iterator adapters are methods that allow us to adapt an iterator to multiple use
+cases.  Because of their chaining behavior they do not consume the iterator for
+us, so we have to explicitely consume the iterator at the end of the chain.
+Take the `map` method for example:
+
+```Rust
+let v1: Vec<i32> = vec![1, 2, 3];
+
+v1.iter().map(|x| x + 1);
+```
+
+This won't work right now because we have only adapted our iterator, not
+consumed it.  We need to consume it by using `collect` to collect it into a
+vector:
+
+```Rust
+let v1: Vec<i32> = vec![1, 2, 3];
+
+let v2: Vec<_> = v1.iter().map(|x| x + 1).collect();
+
+assert_eq!(v2, vec![2, 3, 4]);
+```
+
+### Using Closures to Capture 
+
+Remember how we said that closures capture variables in their outer environment? We can use that functionality in conjunction with iterators.  Let's look
+at the `filter` method and see how we can use it in a useful way to capture an
+outer environment: 
+
+```Rust
+#[derive(PartialEq, Debug)]
+struct Shoe {
+    size: u32,
+    style: String,
+}
+
+fn shoes_in_my_size(shoes: Vec<Shoe>, shoe_size: u32) -> Vec<Shoe> {
+    shoes.into_iter()
+        .filter(|s| s.size == shoe_size)
+        .collect()
+}
+
+#[test]
+fn filters_by_size() {
+    let shoes = vec![
+        Shoe { size: 10, style: String::from("sneaker") },
+        Shoe { size: 13, style: String::from("sandal") },
+        Shoe { size: 10, style: String::from("boot") },
+    ];
+
+    let in_my_size = shoes_in_my_size(shoes, 10);
+
+    assert_eq!(
+        in_my_size,
+        vec![
+            Shoe { size: 10, style: String::from("sneaker") },
+            Shoe { size: 10, style: String::from("boot") },
+        ]
+    );
+
+    println!("This shouldn't work: {:?}", shoes);
+}
+```
+
+In this example we are doing a few interesting things.  In the function
+`shoes_in_my_size` we are taking **ownership** of Vec<Shoe>.  We then call
+`into_iter` which gives us owned copies of the values by which we filter through
+to match only shoes in my size (even though `shoe_size` is part of the outer
+environment).  We then return an owned vector of shoes filtered by our size.
+Take note the last line in this block that I've added of a print statement that
+will fail.  Because we have taken ownership of shoes and that ownership drops at
+the end of `shoes_in_my_size` we no longer have access to `shoes` after we call
+our function. We could have designed it to not do this, but this shows off some
+ways to work with Rusts ownership system.
+
+## Creating our Own Iterators
+
+We can create our own iterators by implementing the `Iterator` trait.  When we
+implement the iterator trait we are required to define the body of the `next`
+method for our custom iterator.  Let's build a simple counter that will always
+count from 1 to 5 using an iterator by defining the counting in our `next`
+method:
+
+```Rust
+struct Counter {
+    count: u32,
+}
+
+impl Counter {
+    fn new() -> Counter {
+        Counter { count: 0 }
+    }
+}
+
+impl Iterator for Counter {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.count += 1;
+
+        if self.count < 6 {
+            Some(self.count)
+        } else {
+            None
+        }
+    }
+}
+
+#[test]
+fn calling_next_directly() {
+    let mut counter = Counter::new();
+
+    assert_eq!(counter.next(), Some(1));
+    assert_eq!(counter.next(), Some(2));
+    assert_eq!(counter.next(), Some(3));
+    assert_eq!(counter.next(), Some(4));
+    assert_eq!(counter.next(), Some(5));
+    assert_eq!(counter.next(), None);
+}
+
+#[test]
+fn using_other_iterator_trait_methods() {
+let sum: u32 = Counter::new().zip(Counter::new().skip(1))
+                             .map(|(a, b)| a * b)
+                             .filter(|x| x % 3 == 0)
+                             .sum();
+            assert_eq!(18, sum);
+}
+```
+
+What's going on here?  Well, we create a new struct called Counter that just
+stores an integer value of our count.  We implement a new function to
+instantiate the counter at a count of 0.  Then we implement the `Iterator` trait
+for our Counter.  We tell it that the `Item` it returns will be of a `u32` of
+some kind.  Then we define our `next` function with the standard signature `fn
+next(&mut self) -> Option<Self::Item> {`.  We simply increment the count and
+then as long as the count is less than 6 we return `Some` with the count wrapped
+up in it.  Otherwise we return a `None`.  
+
+What does this buy us?  Well, as you can see from our first test we now have a
+counter that counts from 1 to 5 using an iterator.  Because we have implemented
+`Iterator` on our custom type we can now chain other `Iterator` methods on top,
+as evidenced by the last test.
+
+
