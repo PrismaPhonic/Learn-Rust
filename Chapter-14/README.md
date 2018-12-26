@@ -9,6 +9,7 @@
 6. [Preparing a Crate for Publishing](#preparing-a-crate-for-publishing)
 7. [Publishing to Crates.io](#publishing-to-crates.io)
 8. [Removing Broken Versions](#removing-broken-versions)
+9. [Cargo Workspaces](#cargo-workspaces)
 
 # Cargo and Crates
 
@@ -165,4 +166,105 @@ like such:
 cargo yank --vers 1.0.1
 ```
 
+## Cargo Workspaces
 
+We can structure our project using subfolders rather than throwing everythin
+into one massive `lib.rs` file by using workspaces.  Workspaces work by having a
+single central top level `Cargo.toml` file that looks like this:
+
+```Rust
+[workspace]
+
+members = [
+    "adder",
+]
+```
+
+Where we define what our workspace is by an array of members.  Those members
+will be a list of **crates**.  In this case after we add _adder_ we run `cargo
+new adder` from the root directory.  This will install the adder **binary**
+crate. from there our root directory should look like this:
+
+```
+├── Cargo.lock
+├── Cargo.toml
+├── adder
+│   ├── Cargo.toml
+│   └── src
+│       └── main.rs
+└── target
+```
+
+At our root directory we have a single `Cargo.lock` file that will manage our
+dependency versions across **all** crates.  Despite this we still need to list
+dependencies within the `Cargo.toml` file specific to each crate.  Let's go
+ahead and add a library crate that our binary crate will use.  First, we'll
+setup our `Cargo.toml` workspace settings:
+
+```
+[workspace]
+
+members = [
+    "adder",
+    "add-one",
+]
+```
+
+in our root directory let's run `cargo new add-one --lib` which will create a
+library crate for us.  Now our directory structure will look like this:
+
+```
+├── Cargo.lock
+├── Cargo.toml
+├── add-one
+│   ├── Cargo.toml
+│   └── src
+│       └── lib.rs
+├── adder
+│   ├── Cargo.toml
+│   └── src
+│       └── main.rs
+└── target
+```
+
+We can create a `pub` function in our new library crate like so:
+
+```Rust
+pub fn add_one(x: i32) -> i32 {
+    x + 1
+}
+```
+
+Now we want our `adder` binary crate to be able to use our new `add_one`
+function. To do this we have to setup the dependencies section of our
+`adder/Cargo.toml` file to point to the **relative** path of our new library
+crate:
+
+```
+[dependencies]
+
+add-one = { path = "../add-one" }
+```
+
+Then we can pull it into our `adder/src/main.rs` file:
+
+```Rust
+use add_one;
+
+fn main() {
+    let num = 10;
+    println!("Hello, world! {} plus one is {}!", num, add_one::add_one(num));
+}
+```
+
+We now can run `cargo build` from our **root** directory and finally `cargo run -p adder` to run our adder crate from the root directory. 
+
+One last note:  When we add a dependency for an external crate to one of our
+crate workspaces cargo build will automatically pull in that external crate for
+all crates in our workspace to use.  The version used by all crates in our
+workspace will be specified in the root directory `Cargo.lock` file and none of
+our workspace crates will have a `Cargo.lock` file.  This ensures that all
+crates use compatible external crates in our project.
+
+Lastly note that running `cargo publish` will **not** publish all our crates to
+_https://crates.io/_.  We will have to publish each crate separately.
