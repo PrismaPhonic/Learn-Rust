@@ -7,6 +7,7 @@
 1. [Deref Trait](#deref)
     1. [Deref Coercion](#deref-coercion)
 1. [Drop Trait](#drop-trait)
+    1. [Dropping Values Early](#dropping-values-early)
 
 # Smart Pointers
 What are smart pointers? Two examples of smart pointers we've already seen are
@@ -228,3 +229,75 @@ Now that we've covered `Deref`, let's look at the other trait all smart pointers
 implement: `Drop`.
 
 ## Drop Trait
+
+Smart pointers call the `Drop` trait automatically when they go out of scope
+which does the work of cleaning up the data the pointer was pointing at on the
+heap.  We can write our own implementation for the `Drop` trait, which requires
+we write a method called `drop`.  Let's do that now to see when the `drop`
+method gets called automatically for us by Rust: 
+
+```Rust
+
+
+struct CustomSmartPointer {
+    data: String,
+}
+
+impl Drop for CustomSmartPointer {
+    fn drop(&mut self) {
+        println!("Dropping CustomSmartPointer with data `{}`!", self.data);
+    }
+}
+
+fn main() {
+    let c = CustomSmartPointer { data: String::from("my stuff") };
+    let d = CustomSmartPointer { data: String::from("other stuff") };
+    println!("CustomSmartPointers created.");
+}
+```
+
+When we run the program we'll see the following:
+
+```Rust
+CustomSmartPointers created.
+Dropping CustomSmartPointer with data `other stuff`!
+Dropping CustomSmartPointer with data `my stuff`!
+```
+
+This is evidence that our `drop` method was called automatically when our
+`CustomSmartPointer` went out of scope!  You'll also notice that they get
+dropped in reverse order - this is because variables are droped in the reverse
+order of their creation in Rust.
+
+### Dropping Values Early
+
+We aren't actually allowed to call the `drop` method directly - because doing so
+would result in a **double free** error - as rust will also still try to call
+drop automatically when our current scope ends.  To get around this we can drop
+out early by implementing `std::mem::drop` function.  This is actually brought
+into scope for us automatically, so we can call it like such:
+
+```Rust
+fn main() {
+    let c = CustomSmartPointer { data: String::from("some data") };
+    println!("CustomSmartPointer created.");
+    drop(c);
+    println!("CustomSmartPointer dropped before the end of main.");
+}
+```
+
+Running this code will print:
+
+```
+CustomSmartPointer created.
+Dropping CustomSmartPointer with data `some data`!
+CustomSmartPointer dropped before the end of main.
+```
+
+We are able to drop the data early and not run into the problem of rust calling
+the `drop` method at the end of the scope.  
+
+Now that we've covered `Deref` and `Drop` traits, let's cover other kinds of
+smart pointers defined in the standard library.
+
+
