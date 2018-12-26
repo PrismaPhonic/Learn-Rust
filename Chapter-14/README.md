@@ -10,6 +10,8 @@
 7. [Publishing to Crates.io](#publishing-to-crates.io)
 8. [Removing Broken Versions](#removing-broken-versions)
 9. [Cargo Workspaces](#cargo-workspaces)
+10. [Installing Binaries with Cargo](#installing-binaries-with-cargo)
+11. [Custom Commands](#custom-commands)
 
 # Cargo and Crates
 
@@ -259,6 +261,9 @@ fn main() {
 
 We now can run `cargo build` from our **root** directory and finally `cargo run -p adder` to run our adder crate from the root directory. 
 
+We can also run `cargo test` from our root directory and it will run **all**
+tests from all of our crates in the workspace.
+
 One last note:  When we add a dependency for an external crate to one of our
 crate workspaces cargo build will automatically pull in that external crate for
 all crates in our workspace to use.  The version used by all crates in our
@@ -268,3 +273,19 @@ crates use compatible external crates in our project.
 
 Lastly note that running `cargo publish` will **not** publish all our crates to
 _https://crates.io/_.  We will have to publish each crate separately.
+
+## Installing Binaries with Cargo
+
+We can also install binary applications using cargo by using `cargo install`.
+This is a lot like `pip3 install` in python.  We can use it as a package manager
+to install **binary** packages from crates.io.  For many systems (like mine,
+arch linux) it's preferable to install from a central repository when installing
+binary packages.
+
+## Custom Commands
+
+Cargo can be extended with subcommands.  If there's a binary in our `$PATH`
+named `cargo-coolstorybro` we can run it by typing `cargo coolstorybro` in our
+terminal.  We can find a list of all cargo subcommands by typing `cargo --list`
+
+That's all for this chapter!
