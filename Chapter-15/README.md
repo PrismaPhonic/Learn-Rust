@@ -4,6 +4,9 @@
 1. [Box<T>](#box<t>)
     1. [Using Box<T> to Store Data on Heap](#using-box<t>-to-store-data-on-heap)
     2. [Building a Recursive List](#building-a-recursive-list)
+1. [Deref Trait](#deref)
+    1. [Deref Coercion](#deref-coercion)
+1. [Drop Trait](#drop-trait)
 
 # Smart Pointers
 What are smart pointers? Two examples of smart pointers we've already seen are
@@ -111,4 +114,117 @@ values to be treated like references.  Let's get into these two traits common to
 all smart pointers next.
 
 
+## Deref Trait
 
+Let's cover the `Deref` trait in more detail now.  First, let's look at a simple
+example of how the dereference `*` operator works:
+
+```Rust
+fn main() {
+    let x = 5;
+    let y = &x;
+
+    assert_eq!(5, x);
+    assert_eq!(5, *y);
+}
+```
+
+In this example we set y to be a pointer to x.  if we tried to compare it
+directly to 5 we would get that 5 != &5 (basically). We use the dereference
+operator to get the value that we are pointing at and compare the literal value.
+Rust knows how to dereference any `&` reference, so why do we need a `Deref`
+trait at all?  Well, `Deref` trait has a method called `deref` where we can
+instruct Rust on how to **create** an `&` reference to the data in our custom
+data type.  Then it can apply the dereference operator to get at the value
+itself **without** taking ownership.  
+
+Let's imagine that we tried to create our own box using a tuple struct:
+
+```Rust
+struct MyBox<T>(T);
+
+impl<T> MyBox<T> {
+    fn new(x: T) -> MyBox<T> {
+        MyBox(x)
+    }
+}
+```
+
+If we then try to use our box in place of our basic code above, we'll get an
+error. The compiler will tell us that `MyBox` cannot be dereferenced - because
+it doesn't implement the `Deref` trait yet!  Lets go ahead and do that:
+
+```Rust
+use std::ops::Deref;
+
+impl<T> Deref for MyBox<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        &self.0
+    }
+}
+```
+
+A few new things here - what the heck is `type Target = T`? Well, apparently
+we'll get into it in Chapter 19, but for now it's a slightly different way of
+declaring a generic parameter.  We implement a method called `deref` which
+instructs Rust on how to create an `&` reference.  In this example our target is
+some generic T which is located at `self.0` (because this is a tuple struct and
+that's how you get at indexes in tuples).  Rust now know how to create a
+reference to our generic.  Now if we use our box, Rust will know how to properly
+dereference it:
+
+```Rust
+fn main() {
+    let x = 5;
+    let y = MyBox::new(x);
+
+    assert_eq!(5, x);
+    assert_eq!(5, *y);
+}
+```
+
+Under the hood Rust will run change the call to `*y` to this: `*(y.deref())`.
+In other words, it will run our deref method so it can create an `&` reference
+to the data stored in our struct tuple, and then subsequently use the derefence
+operator to get at the data itself without taking ownership of the data.
+
+### Deref Coercion
+
+Rust handles coercing types in arguments passed to a function to the types wanted by that function if such coercion can take place through chaining of `deref` methods
+(I think this definition is much better than the one in the book). This happens
+at compile time and is hard coded for us so we don't pay a performance penalty
+at runtime for deref coercion.  To wrap our heads around this let's look at a
+simple function called hello which takes as an argument a string slice:
+
+```Rust
+fn hello(name: &str) {
+    println!("Hello, {}!", name);
+}
+```
+
+We could then call the function this way (yes, I know this seems strange):
+
+```Rust
+fn main() {
+    let m = MyBox::new(String::from("Rust"));
+    hello(&m);
+}
+```
+
+I know this looks like it shouldn't work, but it does!  What's happening here?
+Well, when rust sees `&m` it runs the `deref` method we wrote for our tuple
+struct and turns it into an `&String` which is still not the type that our
+`hello` function accepts!  So then what happens?  Well, Rust will then look at
+the `Deref` implementation on the `String` type and see that it essentially
+helps rust to convert a `String` into a `&str` and so it coerces it by calling
+the `String` types `deref` method and voila - our function call actually works!
+
+This is pretty confusing, so play with this some and re-read this section a few
+times until it starts to sink in.
+
+Now that we've covered `Deref`, let's look at the other trait all smart pointers
+implement: `Drop`.
+
+## Drop Trait
