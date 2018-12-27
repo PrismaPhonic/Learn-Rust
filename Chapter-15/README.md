@@ -4,10 +4,13 @@
 1. [Box<T>](#box<t>)
     1. [Using Box<T> to Store Data on Heap](#using-box<t>-to-store-data-on-heap)
     2. [Building a Recursive List](#building-a-recursive-list)
-1. [Deref Trait](#deref)
+2. [Deref Trait](#deref)
     1. [Deref Coercion](#deref-coercion)
-1. [Drop Trait](#drop-trait)
+3. [Drop Trait](#drop-trait)
     1. [Dropping Values Early](#dropping-values-early)
+4. [Rc<T>](#rc<t>)
+    1. [Reference Counts](#reference-counts)
+5. [RefCell<T>](#refcell<t>)
 
 # Smart Pointers
 What are smart pointers? Two examples of smart pointers we've already seen are
@@ -300,4 +303,103 @@ the `drop` method at the end of the scope.
 Now that we've covered `Deref` and `Drop` traits, let's cover other kinds of
 smart pointers defined in the standard library.
 
+# Rc<T>
 
+What is Rc<T>?  It's the _referenece counted smart pointer_. Basically it's a
+way for us to declare **shared** ownership over a value.  Everytime we point a
+new reference at that data, rust increments the count. When the count hits zero
+(there exists no valid references to it), Rust will then issue `drop` and clean
+up the data in the heap. To get a sense of where this would be helpful, let's
+imagine that for our recursive list we have a cons list that we want two other
+source nodes to point to.  Let's try to implement this using `Box<T>`:
+
+```Rust
+enum List {
+    Cons(i32, Box<List>),
+    Nil,
+}
+
+use List::{Cons, Nil};
+
+fn main() {
+    let a = Cons(5,
+        Box::new(Cons(10,
+            Box::new(Nil))));
+    let b = Cons(3, Box::new(a));
+    let c = Cons(4, Box::new(a));
+}
+```
+
+This won't compile! The `box` will take ownership of a (when we decalre `b`) and
+then c will not be able to acces `a` on the last line.  In this situation we
+want to share ownership of `a` between `b` and `c` so let's use `Rc<T>`:
+
+```Rust
+enum List {
+    Cons(i32, Rc<List>),
+    Nil,
+}
+
+use List::{Cons, Nil};
+use std::rc::Rc;
+
+fn main() {
+    let a = Rc::new(Cons(5, Rc::new(Cons(10, Rc::new(Nil)))));
+    let b = Cons(3, Rc::clone(&a));
+    let c = Cons(4, Rc::clone(&a));
+}
+```
+
+We've changed our `Cons` type to use an `Rc<List>` rather than `Box<List>`.
+Note how we are using RC here.  We use `Rc::new` for each chaining when we
+declare the cons list and point `a` at it.  Then when we call `b` and `c` we
+have both issue an `Rc::clone` of `&a`. This might seem alarming at first since
+`clone` is usually pretty expensive, especially for large pieces of data!  We
+could have called `a.clone()` instead, but this would signify we are making a
+**deep clone** and we aren't!  By convention we call `Rc::clone` because the
+implementation of the `Clone` trait on `Rc` is extremely mild - it just
+increments Rusts ownership reference counter.  When the counter hits 0, it
+cleans up the data on the heap - it's that simple!  We call clone with
+`Rc::clone` so we can visually distinguish that we are not making a deep clone
+and that our call is very efficient and shallow (shouldn't they have called it
+copy then?! or increment?! oh well)
+
+## Reference Counts
+
+Let's make a quick example to see how references increase and decrease in count
+for `Rc<T>`'s:
+
+```Rust
+fn main() {
+    let a = Rc::new(Cons(5, Rc::new(Cons(10, Rc::new(Nil)))));
+    println!("count after creating a = {}", Rc::strong_count(&a));
+    let b = Cons(3, Rc::clone(&a));
+    println!("count after creating b = {}", Rc::strong_count(&a));
+    {
+        let c = Cons(4, Rc::clone(&a));
+        println!("count after creating c = {}", Rc::strong_count(&a));
+    }
+    println!("count after c goes out of scope = {}", Rc::strong_count(&a));
+}
+```
+
+When we run the program, we'll see the following:
+
+```
+count after creating a = 1
+count after creating b = 2
+count after creating c = 3
+count after c goes out of scope = 2
+```
+
+To put it simply - everytime we call Rc::clone we increase the reference count,
+and anytime an Rc<T> goes out of scope, the count goes down automatically when
+`drop` is called.  only on the **last** drop (where count becomes zero) does the
+data on the heap then get cleaned up!
+
+One **very** important note about Rc<T> - it only deals with multiple owners of
+**immutable** data! If it allowed for multiple simultaneous owners of mutable
+data then we could run into issues of data races and other heavoc! We sometimes
+need to mutate data though and for that let's talk about `RefCell<T>`.
+
+# RefCell<T> 
