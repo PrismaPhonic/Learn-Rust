@@ -11,6 +11,10 @@
 4. [Rc<T>](#rc<t>)
     1. [Reference Counts](#reference-counts)
 5. [RefCell<T>](#refcell<t>)
+    1. [Combining Rc<T> and RefCell<T>](#combining-rc<t>-and-refcell<t>)
+6. [Reference Cycles](#reference-cycles)
+    1. [Preventing Reference Cycles](#preventing-reference-cycles)
+7. [Review](#review)
 
 # Smart Pointers
 What are smart pointers? Two examples of smart pointers we've already seen are
@@ -403,3 +407,494 @@ data then we could run into issues of data races and other heavoc! We sometimes
 need to mutate data though and for that let's talk about `RefCell<T>`.
 
 # RefCell<T> 
+
+RefCell's offer interior mutability - that is, they allow us to mutate a value
+that would otherwise be immutable. This sounds like a horrible idea to me - it
+also has a large performance cost as the borrow rules must be checked at
+_runtime_ rather than at compilation time.  It seems that it's useful for cases
+where you know without a doubt that your code will not violate the borrow rules
+at runtime and need a way around the borrow checkers conservative checks.  
+
+A few things: RefCell, unlike Rc<T> represents single ownership over the data it
+holds. And remember, it still enforces the borrow rules at runtime - even if it
+allows you to get a mutable reference of an immutable.
+
+Let's look at one use case for when this could be handy - in testing when we
+need to create a _mock object_ to check that our function is doing what it
+should.  Here's an example of a library that allows someone to implement a limit
+tracker, like those seen in public APIs restricting daily user quotas:
+
+```Rust
+pub trait Messenger {
+    fn send(&self, msg: &str);
+}
+
+pub struct LimitTracker<'a, T: 'a + Messenger> {
+    messenger: &'a T,
+    value: usize,
+    max: usize,
+}
+
+impl<'a, T> LimitTracker<'a, T>
+    where T: Messenger {
+    pub fn new(messenger: &T, max: usize) -> LimitTracker<T> {
+        LimitTracker {
+            messenger,
+            value: 0,
+            max,
+        }
+    }
+
+    pub fn set_value(&mut self, value: usize) {
+        self.value = value;
+
+        let percentage_of_max = self.value as f64 / self.max as f64;
+
+        if percentage_of_max >= 1.0 {
+            self.messenger.send("Error: You are over your quota!");
+        } else if percentage_of_max >= 0.9 {
+             self.messenger.send("Urgent warning: You've used up over 90% of
+your quota!");
+        } else if percentage_of_max >= 0.75 {
+            self.messenger.send("Warning: You've used up over 75% of your
+quota!");
+        }
+    }
+}
+```
+
+Take note before we look at a sample test of our trait `Messenger` - it takes an
+**immutable** borrow of self.  Now let's try to create a mock object that can
+intercept the message initiated by the `set_value` method of our `LimitTracker`:
+
+```Rust
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct MockMessenger {
+        sent_messages: Vec<String>,
+    }
+
+    impl MockMessenger {
+        fn new() -> MockMessenger {
+            MockMessenger { sent_messages: vec![] }
+        }
+    }
+
+    impl Messenger for MockMessenger {
+        fn send(&self, message: &str) {
+            self.sent_messages.push(String::from(message));
+        }
+    }
+
+    #[test]
+    fn it_sends_an_over_75_percent_warning_message() {
+        let mock_messenger = MockMessenger::new();
+        let mut limit_tracker = LimitTracker::new(&mock_messenger, 100);
+
+        limit_tracker.set_value(80);
+
+        assert_eq!(mock_messenger.sent_messages.len(), 1);
+    }
+}
+```
+
+This test fails because our implementation of the `Messenger` trait with the
+`send` method tries to take a mutable borrow of self when the trait requires
+that `send` only take an immutable borrow of self.  How then can we create a
+mock object to test our library?
+
+We can use `RefCell<T>` to get inner mutability:
+
+```Rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+
+    struct MockMessenger {
+        sent_messages: RefCell<Vec<String>>,
+    }
+
+    impl MockMessenger {
+        fn new() -> MockMessenger {
+            MockMessenger { sent_messages: RefCell::new(vec![]) }
+        }
+    }
+
+    impl Messenger for MockMessenger {
+        fn send(&self, message: &str) {
+            self.sent_messages.borrow_mut().push(String::from(message));
+        }
+    }
+
+    #[test]
+    fn it_sends_an_over_75_percent_warning_message() {
+        // --snip--
+
+        assert_eq!(mock_messenger.sent_messages.borrow().len(), 1);
+    }
+}
+```
+
+By using `RefCell` we can create a smart pointer to our vector and even though
+in our `send` function we are taking an immutable reference of self we are able
+to get at a mutable borrow by using `borrow_mut` method.  
+
+When we use `borrow` we get a `Ref<T>` which is an immutable smart pointer and when we
+use `borrow_mut` we get back a `RefMut<T>` which is a mutable smart pointer.  At
+runtime rust will keep a count of how many mutable and immutable borrows we have
+and still enforce the borrow rules - which may make our function panic.  For
+this reason we should seriously consider limiting the use of `RefCell` (this is
+just my opinion, not necessarily the opinion of the author of The Rust
+Programming Langauge book).
+
+and because it was included in the book, let's go over a pattern that makes me
+seriously question the safety of this approach:
+
+### Combining Rc<T> and RefCell<T>
+
+We can combine RefCell and Rc to have multiple owners of mutable data (even if
+the types are immutable).  To me this seems to defeat the entire point of Rusts
+safety checks but here we go:
+
+```Rust
+#[derive(Debug)]
+enum List {
+    Cons(Rc<RefCell<i32>>, Rc<List>),
+    Nil,
+}
+
+use List::{Cons, Nil};
+use std::rc::Rc;
+use std::cell::RefCell;
+
+fn main() {
+    let value = Rc::new(RefCell::new(5));
+
+    let a = Rc::new(Cons(Rc::clone(&value), Rc::new(Nil)));
+
+    let b = Cons(Rc::new(RefCell::new(6)), Rc::clone(&a));
+    let c = Cons(Rc::new(RefCell::new(10)), Rc::clone(&a));
+
+    *value.borrow_mut() += 10;
+
+    println!("a after = {:?}", a);
+    println!("b after = {:?}", b);
+    println!("c after = {:?}", c);
+}
+```
+
+The `value` is a variable that is an instance of `Rc<RefCell<i32>>`.  Remember
+that Rc allows multiple ownership while RefCell enables interior mutability.  By
+combining these two we are able to mutate the value even though it's shared by
+multiple owners and it will update in all paths:
+
+```
+a after = Cons(RefCell { value: 15 }, Nil)
+b after = Cons(RefCell { value: 6 }, Cons(RefCell { value: 15 }, Nil))
+c after = Cons(RefCell { value: 10 }, Cons(RefCell { value: 15 }, Nil))
+```
+
+## Reference Cycles
+
+Rust does not actually garauntee against memory leaks, but safe rust does
+garauntee that memory leaks in Rust are memory safe. What is a memory leak
+anyways? It's basically memory that never gets cleaned up! This can happen when
+we create cyclical references in rust using strong counts - if two nodes for
+instance point at each other using strong counts then at the end of their scope
+they will never hit 0 and the memory will never be cleaned up.  Let's try to
+force that to happen to demonstrate this behavior by modifying our cons list:
+
+```Rust
+use std::rc::Rc;
+use std::cell::RefCell;
+use List::{Cons, Nil};
+
+#[derive(Debug)]
+enum List {
+    Cons(i32, RefCell<Rc<List>>),
+    Nil,
+}
+
+impl List {
+    fn tail(&self) -> Option<&RefCell<Rc<List>>> {
+        match self {
+            Cons(_, item) => Some(item),
+            Nil => None,
+        }
+    }
+}
+```
+
+In this example our cons list owns it's own `i32` value but we instead create
+shared ownership to the List it links to, and wrap that in a `RefCell` so we can
+get interior mutability to change what list our current list links to.  We then
+write a `tail` method that returns an Option of a tail - essentially if this
+list links to another list then we get back that reference wrapped in a `Some`
+and otherwise if it points to `Nil` then we get back a `None`.  So what's the
+problem here?  Well, potentially none, but let's write some code where we
+intentionally create a memory cycle:
+
+```Rust
+fn main() {
+    let a = Rc::new(Cons(5, RefCell::new(Rc::new(Nil))));
+
+    println!("a initial rc count = {}", Rc::strong_count(&a));
+    println!("a next item = {:?}", a.tail());
+
+    let b = Rc::new(Cons(10, RefCell::new(Rc::clone(&a))));
+
+    println!("a rc count after b creation = {}", Rc::strong_count(&a));
+    println!("b initial rc count = {}", Rc::strong_count(&b));
+    println!("b next item = {:?}", b.tail());
+
+    if let Some(link) = a.tail() {
+        *link.borrow_mut() = Rc::clone(&b);
+    }
+
+    println!("b rc count after changing a = {}", Rc::strong_count(&b));
+    println!("a rc count after changing a = {}", Rc::strong_count(&a));
+
+    // Uncomment the next line to see that we have a cycle;
+    // it will overflow the stack
+    // println!("a next item = {:?}", a.tail());
+}
+```
+
+What's going on here?  Well, let's take a look at our terminal output **before**
+we uncomment the last lines:
+
+```
+a initial rc count = 1
+a next item = Some(RefCell { value: Nil })
+a rc count after b creation = 2
+b initial rc count = 1
+b next item = Some(RefCell { value: Cons(5, RefCell { value: Nil }) })
+b rc count after changing a = 2
+a rc count after changing a = 2
+```
+
+So at the end of the scope our rc strong count for both b and a are 2!  Even if
+we get a drop of both references at the end of the scope there will still be a
+strong count of 1 for each and the memory will never be cleaned up!  What
+happens if we uncomment the last line?  Well, we'll get an endless loop of the
+two lists referencing each other until we hit a stack overflow and our program
+panics!  How can we prevent this? Let's look at how we can utilize **weak**
+counts instead of strong counts so we don't end up with memory cycles.
+
+### Preventing Reference Cycles
+
+As of now we know that using `Rc::clone` increases the `strong_count` of an
+`Rc<T>` by one, and the value pointed at by an `Rc<T>` will only get cleaned up
+when the strong count reaches zero.  Well, we can still create circular
+references if we want and not run into the problem of a memory leak by utilizing
+a _weak reference_ to the value inside the Rc<T>.  We can either generate a weak
+reference with `Weak::new` (after bringing into scope `std::rc::Weak`) or we
+call `Rc::downgrade(&ref)` to get a weak reference to the ref we pass as an
+argument.
+
+What's so special about these weak references? Well, the value is still only
+cleaned up if the strong count hits 0 - it doesn't matter at all if there are
+still weak references to that data! In fact, unlike an `Rc<T>`, a `Weak<T>` does not imply ownership at all. Let's take a look at how this works by trying to build a tree in rust, where nodes have parents (strong count ownership), but children have parents whom they do not own (weak). 
+
+Before we move on, I do have an ommision to make. At this point in the book I started to seriously question the design patterns being used here. I decided instead to get rid of the use of RefCell entirely in the code they suggested to build a tree by which each node has a reference to both it's parent and children.  Here's what I came up with instead:
+
+```Rust
+use std::rc::{Rc, Weak};
+use std::cell::RefCell;
+
+#[derive(Debug)]
+struct Node {
+    value: i32,
+    children: Vec<Rc<Node>>,
+    parent: Weak<Node>,
+}
+
+fn main() {
+    let leaf = Rc::new(Node {
+        value: 3,
+        parent: Weak::new(),
+        children: vec![],
+    });
+
+    println!("leaf parent = {:?}", leaf.parent.upgrade());
+
+    let branch = Rc::new(Node {
+        value: 5,
+        parent: Weak::new(),
+        children: vec![Rc::clone(&leaf)],
+    });
+
+    *leaf.parent = Rc::downgrade(&branch);
+}
+```
+
+And that's where I started to finally understand the use case for Refcell.
+`leaf` is immutable!  Furthermore, if we want to modify the parent, we would
+have to change what the `Weak<Node>` is, but this isn't possible!  Using
+`RefCell` we can provide _interior mutability_ to specific fields in our struct
+and keep other fields completely immutable.  That's handy!  Let's look at their
+suggested design, which does work:
+
+```Rust
+use std::rc::{Rc, Weak};
+use std::cell::RefCell;
+
+#[derive(Debug)]
+struct Node {
+    value: i32,
+    children: RefCell<Vec<Rc<Node>>>,
+    parent: RefCell<Weak<Node>>,
+}
+
+fn main() {
+    let leaf = Rc::new(Node {
+        value: 3,
+        parent: RefCell::new(Weak::new()),
+        children: RefCell::new(vec![]),
+    });
+
+    println!("leaf parent = {:?}", leaf.parent.borrow().upgrade());
+
+    let branch = Rc::new(Node {
+        value: 5,
+        parent: RefCell::new(Weak::new()),
+        children: RefCell::new(vec![Rc::clone(&leaf)]),
+    });
+
+    *leaf.parent.borrow_mut() = Rc::downgrade(&branch);
+
+    println!("leaf parent = {:?}", leaf.parent.borrow().upgrade());
+}
+```
+
+Now we are able to modify the leafs parent by asking for a mutable borrow from
+`RefCell` with `borrow_mut` method.  We assign to that parent a `Weak<T>`
+pointer to our branch which will not increase the strong count.
+
+Whats with all these `upgrade` methods?  Well, calling `upgrade` on a `Weak<T>`
+instance will return an `Option<Rc<T>>`.  Why?  Because it might be that we are
+still holding a weak reference to a value that has already been cleaned up
+because the strong count hit 0!  By using upgrade we can confirm if we have
+`Some` valid value still being referenced or `None`.  
+
+Lastly let's confirm all of our new found learnings around weak and strong
+counts by creating some scopes and throwing in some print statements:
+
+```Rust
+fn main() {
+    let leaf = Rc::new(Node {
+        value: 3,
+        parent: RefCell::new(Weak::new()),
+        children: RefCell::new(vec![]),
+    });
+
+    println!(
+        "leaf strong = {}, weak = {}",
+        Rc::strong_count(&leaf),
+        Rc::weak_count(&leaf),
+    );
+
+    {
+        let branch = Rc::new(Node {
+            value: 5,
+            parent: RefCell::new(Weak::new()),
+            children: RefCell::new(vec![Rc::clone(&leaf)]),
+        });
+
+        *leaf.parent.borrow_mut() = Rc::downgrade(&branch);
+
+        println!(
+            "branch strong = {}, weak = {}",
+            Rc::strong_count(&branch),
+            Rc::weak_count(&branch),
+        );
+
+        println!(
+            "leaf strong = {}, weak = {}",
+            Rc::strong_count(&leaf),
+            Rc::weak_count(&leaf),
+        );
+    }
+
+    println!("leaf parent = {:?}", leaf.parent.borrow().upgrade());
+    println!(
+        "leaf strong = {}, weak = {}",
+        Rc::strong_count(&leaf),
+        Rc::weak_count(&leaf),
+    );
+}
+```
+
+What happens when we run this in the terminal?  We'll get:
+
+```
+leaf strong = 1, weak = 0
+branch strong = 1, weak = 1
+leaf strong = 2, weak = 0
+leaf parent = None
+leaf strong = 1, weak = 0
+```
+
+So what happened exactly?  Well, we create the leaf which has an initial strong
+count of 1 (the variable leaf itself is an Rc<T> instance pointing at the Node).
+Then we create a new scope and create the branch there and issue
+`Rc::clone(&leaf)` which increases the strong count of the leaf by 1.  branch
+itself now also has an initial strong count of 1.  We then borrow a mutable copy
+of the leafs parent and assign it a `Weak<T>` pointing at `branch` which
+increases the branch weak count by 1.  So at the end of this scope before Rust
+issues the `drop` method on `branch` we have a strong count of `1` for branch
+and a weak count of `1` as well.  This means that at the end of the scope Rust
+drops the strong count to 0 and cleans up all that data.
+
+Now we have a remaining `Weak<T>` pointing at a value that was already cleaned
+up!  So when we check the leafs parent using `upgrade` we get back `None`.  We
+lastly look at the leafs strong count and see that it has dropped back to 1
+which means at the end of the function scope Rust can clean up that Node in
+memory as well!
+
+This was a very heavy chapter, so let's take a second to summarize the
+difference between the smart pointers we've covered:
+
+# Review
+
+Let's quickly summarize our different smart pointers:
+
+1. Box<T> - A type with a known size that points to data allocated on the heap
+2. Rc<T> - A type that allows multiple owners of immutable data, and keeps track
+   of the number of references to data.  When the strong count hits zero, the
+   data on the heap is cleaned up.
+3. RefCell<T> - A type that provides interior mutability even if applied to
+   immutable types.  It still enforces all the borrowing rules, but enforces
+   them at runtime which encures a performance cost - and can result in program
+   panic if the borrow rules aren't met at runtime.
+
+When would we use each?
+
+1. Box<T>
+    1. When you have a type whose size can't be known at compile time and
+       you want to use a value of that type in a context that requires an exact
+       size.
+    2. When you have a large amount of data and want to transfer ownership but
+       ensure the data won't be copied when you do so.
+    3. When you want to own a value and you care only that it's a type that
+       implements a particular trait rather than being of a specific type.
+    4. Allows immutable or mutable borrows checked at **compile time**
+2. Rc<T>
+    1. When we want to allocate some data on the heap for multiple parts of our
+       program to read and we can't determine at compile time which part will 
+       finish using the data last
+    2. Enables multiple ownership of the same data.  Box<T> and RefCell<T> have
+       single owners.
+    3. Allows only immutable borrows checked at **compile time**
+3. RefCell<T>
+    1. Allows _interior mutability_ which might be useful when mocking data in
+       testing for complex scenarios, or allowing us to mutate specific fields
+       of custom structs when we want most of our struct instance to be
+       immutable.
+    2. Allows mutable borrows checked **at runtime**. Still follows all borrow
+       rules and has a performance cost of checking at runtime as opposed to
+       compile time checking.
