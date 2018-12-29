@@ -8,6 +8,11 @@
 5. [Sending Multiple Messages to a
    Receiver](#sending-multiple-messages-to-a-receiver)
 6. [Creating Multiple Producers](#creating-multiple-producers)
+7. [Shared State Concurrency](#shared-state-concurrency)
+    1. [Mutex to Manage Data Access](#mutex-to-manage-data-access)
+    2. [Mutex API](#mutex-api)
+    3. [Sharing a Mutex between Threads](#sharing-a-mutex-between-threads)
+    4. [Multiple Ownership with Threads](#multiple-ownership-with-threads)
 
 # Fearless Concurrency
 
@@ -313,5 +318,136 @@ between the two child threads!
 
 Now that we've seen how channels work, let's look at an opposite approach:
 sharing memory.
+
+# Shared State Concurrency
+
+Instead of message passing we can handle concurrency by sharing memory between
+threads.  The first way to do this that we'll look at is using a mutex.
+
+## Mutex To Manage Data Access
+
+Mutex stands for mutual exclusive.  A mutex allows only one thread to access a
+piece of datta at a time.  To access that data a thread has to acquire a lock on
+the mutex.  A lock is a data structure that's part of the mutex and keeps track
+of who currently has access rights to the data.  Mutexes are very difficult to
+use and you have to always remember these two very firm rules:
+
+1. You must attempt to acquire the lock before using the data
+2. When you're done with the data that the mutex guards, you must unlock the
+   data so other threads can acquire the lock.
+
+Let's look now at the basics of the mutex API:
+
+## Mutex API
+
+As we mentioned before we need to acquire a lock to get access to the data that
+Mutex points at:
+
+```Rust
+use std::sync::Mutex;
+
+fn main() {
+    let m = Mutex::new(5);
+
+    {
+        let mut num = m.lock().unwrap();
+        *num = 6;
+    }
+
+    println!("m = {:?}", m);
+}
+```
+
+This should start to look pretty familiar.  We make a new Mutex and have it
+point at the data (an integer 5 in this example).  We then get a lock on it by
+using the `lock` method and then we unwrap the result because lock returns a `
+Result` type called a `LockResult` which if successful will itself contain a
+`MutexGuard<T>`. While `Mutex<T>` is a smart pointer, calling `lock` will itself
+return a smart pointner called `MutexGuard`.  When the Mutex guard goes out of
+scope (after we mutate the num) then the Mutex is **unlocked** and can be access
+again later.  Let's look now at sharing a mutex between multiple threads
+
+## Sharing a Mutex between Threads
+
+Let's try right now (and fail miserably) to share a mutex between two threads:
+
+```Rust
+use std::sync::Mutex;
+use std::thread;
+
+fn main() {
+    let counter = Mutex::new(0);
+    let mut handles = vec![];
+
+    let handle = thread::spawn(move || {
+        let mut num = counter.lock().unwrap();
+
+        *num += 1;
+    });
+    handles.push(handle);
+
+    let handle2 = thread::spawn(move || {
+        let mut num2 = counter.lock().unwrap();
+
+        *num2 += 1;
+    });
+    handles.push(handle2);
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    println!("Result: {}", *counter.lock().unwrap());
+}
+```
+
+Why does this fail?  Well, we aren't allowed to move ownership of the mutex into
+multiple threads.  This makes sense because threads run in parallel and data can
+only have one owner.  How do we fix this?  
+
+## Multiple Ownership with Threads
+
+Remember when we used Rc<T> to have multiple owners of a piece of data?  Well,
+we can't use it when multithreading because it's not _thread safe_.  Instead we
+can use `Arc<T>` which has the exact same API as `Rc<T>` but it's a thread safe
+verison.  Why not just use `Arc<T>` all the time then?  There's a performance
+penalty to make multiple ownership thread safe, so if we are just writing single
+threaded applications it's more performant to use `Rc<T>` over `Arc<T>`.  Let's
+look at how we could use it now:
+
+```Rust
+use std::sync::{Mutex, Arc};
+use std::thread;
+
+fn main() {
+    let counter = Arc::new(Mutex::new(0));
+    let mut handles = vec![];
+
+    for _ in 0..10 {
+        let counter = Arc::clone(&counter);
+        let handle = thread::spawn(move || {
+            let mut num = counter.lock().unwrap();
+
+            *num += 1;
+        });
+        handles.push(handle);
+    }
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    println!("Result: {}", *counter.lock().unwrap());
+}
+```
+
+This program will work!  We now can move counter into each thread in a thread
+safe way.  You might also notice that we are mutating the value inside the
+`counter` even though we declared it as an immutable type.  This is because
+`Mutex<T>` is a smart pointer that like `RefCell` provides _interior
+mutability_.  
+
+Now that we've discussed sharing memory between threads lets look at the `Sync`
+and `Send` traits and how to use them with our custom types!
 
 
