@@ -13,6 +13,7 @@
     2. [Mutex API](#mutex-api)
     3. [Sharing a Mutex between Threads](#sharing-a-mutex-between-threads)
     4. [Multiple Ownership with Threads](#multiple-ownership-with-threads)
+8. [Sync and Send Traits](#sync-and-send-traits)
 
 # Fearless Concurrency
 
@@ -448,6 +449,21 @@ safe way.  You might also notice that we are mutating the value inside the
 mutability_.  
 
 Now that we've discussed sharing memory between threads lets look at the `Sync`
-and `Send` traits and how to use them with our custom types!
+and `Send` traits.
 
+## Sync and Send Traits
 
+Let's very briefly wrap up by talking about the `Sync` and `Send` traits.  The
+`Send` marker trait indicates that ownership of the type can be transferred
+between threads (think back to message passing we covered in this chapter).
+Almost every Rust type is `Send`.  There are some exceptions (like `Rc<T>` that
+we discovered wasn't thread safe for `Send`).  
+
+What about `Sync`?  `Sync` marker trait indicates that it is safe for the type
+implementing `Sync` to be referenced by multiple threads.  Any type implementing
+`Send` for &T is automatically `Sync` for T.  Primitive types in Rust are all
+`Sync` and custom types composed entirely of types that are Sync are also Sync.
+Most things are Sync, with the exception of `Rc<T>` and `RefCell<T>` because the
+way they work is not thread safe!
+
+That's all for concurrency! 
