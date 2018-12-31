@@ -9,6 +9,7 @@
     4. [for Loops](#for-loops)
     5. [let statements](#let-statements)
     6. [Function Parameters](#function-parameters)
+3. [Refutable vs Irrefutable Patterns](#refutable-vs-irrefutable-patterns)
 
 # Patterns and Matching
 
@@ -163,5 +164,40 @@ arguments right in the function signature and then use those variables in our
 function. Pretty sweet!
 
 Now let's look at why some patterns might fail to match.
+
+# Refutable vs Irrefutable Patterns
+
+Patterns are either refutable or irrefutable. The simplest pattern is
+irrefutable (there is only the potential for a successful match).  If we were to
+write `let x = 7`, we are giving rust an irrefutable pattern because x will
+match anything on the right of the assignment operator, therefore it's an
+irrefutable pattern.  If innstead we said `if let Some(x) = a_value` we are
+providing a refutable pattern - there is some case when we get a `None` rather
+than a `Some`.  The `if` before `let` ensures that we can pass a refutable
+pattern in.
+
+The caviet to that is that function parameters, let statements and for loops can
+only accept irrefutable patterns.  On the flip side `if let` and `while let`
+**only** accept refutable patterns.  If we were to type:
+
+```Rust
+let Some(x) = some_option_value;
+```
+
+We would not be able to compile - we have tried to pass a refutable pattern to a
+statement that only takes irrefutable patterns.  Inversely if we were to pass an
+irrefutable pattern to a statement that only takes refutable patterns we would
+fail to comile as well:
+
+```Rust
+if let x = 7 {
+    println!("{}", x);
+}
+```
+
+To expand on this, match arms must use refutable patterns except for the last
+arm which must match all remaining values with an irrefutable pattern.
+
+Now that we've gotten that out of the way, let's get deeper into pattern syntax.
 
 
