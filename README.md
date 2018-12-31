@@ -27,3 +27,5 @@ summaries of each chapter.  Chapter 1 is just install so we start on Chapter 2.
 16. [Dining Philosophers](/Dining-Philosophers/)
 17. [Chapter 17](/Chapter-17/)
 18. [Chapter 18](/Chapter-18/)
+18. [Chapter 18](/Chapter-18/)
+19. [Chapter 19](/Chapter-19/)
