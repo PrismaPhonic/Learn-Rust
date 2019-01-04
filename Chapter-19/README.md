@@ -6,6 +6,8 @@
     2. [Call an Unsafe Function](#call-an-unsafe-function)
     3. [Use Mutable Static Variables](#use-mutable-static-variables)
     4. [Implement an Unsafe Trait](#implement-an-unsafe-trait)
+2. [Advanced Lifetimes](#advanced-lifetimes)
+    1. [Lifetime Subtyping](#lifetime-subtyping)
 
 # Advanced Features
 
@@ -228,5 +230,78 @@ unsafe impl Foo for i32 {
     // method implementations go here
 }
 ```
+
+# Advanced Lifetimes
+
+We learned in Chapter 10 about lifetimes, but there are some advanced lifetime
+topics we didn't cover then:
+
+1. Lifetime Subtyping: ensures one lifetime outlives another lifetime
+2. Lifetime bounds: specifies a lifetime for a reference to a generic type
+3. Inference of trait object lifetimes: allows the compiler to infer trait
+   object lifetimes
+4. The anonymous lifetime
+
+Let's cover these now.
+
+## Lifetime Subtyping
+
+_Lifetime subtyping_ ensures that one lifetime should outlive another lifetime. I'm not actually sure if this is necessary anymore as of December 23rd, 2018 when the Rust team introduced non-lexical lifetimes. My understanding is that the compiler now can look across your library to determine lifetimes based on the control flow graph rather than lexical scopes.  Here's in their example where the author claimed this should still not compile, but it does on my system:
+
+```rust
+struct Context<'s>(&'s str);
+
+struct Parser<'c, 's> {
+    context: &'c Context<'s>,
+}
+
+impl<'c, 's> Parser<'c, 's> {
+    fn parse(&self) -> Result<(), &'s str> {
+        Err(&self.context.0[1..])
+    }
+}
+
+fn parse_context(context: Context) -> Result<(), &str> {
+    Parser { context: &context }.parse()
+}
+```
+
+In this example we are creating a mock of a parser (that doesn't actually parse
+anything, very simple mock).  We have a tuple struct called `Context` which
+holds a string slice.  Our `Parser` struct has a field `context` which holds a
+`Context` type.  Then we have an `impl` block for `Parser` with a `parse` method
+that returns nothing on success or a sub-slice of the string slice being held by
+the `Context` in the `Parser`.  We then have a totally separate function called
+`parse_context` that takes ownership of a `Context` type and then constructs a
+`Parser` instance right there on the spot and giving it a slice of this
+`Context` that it has taken ownership of - running the `parse` method on the
+just now instantiated `Parser` which would theoretically return a result.
+
+This seems really hairy but all we care about is that the `&str` in the
+`parse_context` function return is garaunteed to live as long as the `&str` that
+the `Context` is holding onto which should live **longer** than either `Context`
+or `Parse`.  As long as that holdds true it doesn't matter that we drop both
+`Context` and `Parser` at the end of `parse_content`'s scope.
+
+To handle this we create two lifetimes, one for `Context` type and one for the
+`&str` it holds onto.  We then pass that down the line to make it clear that the
+`&str` being returned by `parse` is tied to that original `&str` that `Context`
+is holding onto which has a **different** lifetime (annotated with `'s` for
+string slice lifetime and `'c` for `Context` type lifetime).  
+
+The book says that this still shouldn't run because the rust compiler can't tell
+that the lifetime `'s` we declare in the signature of our `Parser` struct is
+tied to the same `'s` as the one we established for our string slice since these
+are different lexical scopes and so we have to let Rust know that `'s` will live
+longer than `'c` using subtyping.  We would do that by changing the signature of
+our `Parser` struct to `struct Parser<'c, 's: 'c> {`.  When we do this we tell
+rust that `'s` is some type that will live at least as long as `'c` but is not
+tied directly to `'c`.  
+
+In my experience the program compiled without this so I think the change to use
+non-lexical lifetimes has perhaps made subtyping unneeded?  Let's keep this one
+in our toolbox just in case.
+
+## Lifetime Bounds
 
 
