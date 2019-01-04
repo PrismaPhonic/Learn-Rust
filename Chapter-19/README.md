@@ -404,4 +404,16 @@ fn foo(string: &str) -> StrWrap<'_> {
 The book sadly does **not** explain why this works, or why we don't simply just
 put these all over the place. Wish it went more in depth on this!
 
+I found another resource that explained it like this: 
 
+```
+What exactly does `'_` mean? It depends on the context! In output contexts, as
+in the return type, it refers to a single lifetime for all "output" locations.
+In input contexts a fresh lifetime is generated for each "input location."
+```
+
+What doesn't really make sense to me here is why we would need it at all?
+According to the lifetime ellision rules  you can elide lifetimes if you only
+have one input, or one of your inputs is `self` - in either case the lifetime of
+the single input, or the lifetime of self is applied to the output type as well.
+Soooooo.... wtf?!
