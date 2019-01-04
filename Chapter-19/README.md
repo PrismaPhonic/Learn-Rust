@@ -10,6 +10,7 @@
     1. [Lifetime Subtyping](#lifetime-subtyping)
     2. [Lifetime Bounds](#lifetime-subtyping)
     3. [Inference of Trait Obj Lifetimes](#inference-of-trait-obj-lifetimes)
+    4. [The anonymous lifetime](#the-anonymous-lifetime)
 
 # Advanced Features
 
@@ -308,7 +309,9 @@ in our toolbox just in case.
 
 Lifetime bounds are similar to trait bounds. They are a way that we can tell
 Rust to enforce that our references in generic types won't outlive the data they
-are referencing.  To put it more simply, it's a way for us to define a lifetime
+are referencing.  
+
+To put it more simply, it's a way for us to define a lifetime
 for the data that a generic points at, and not simply define the lifetime of the
 reference itself.
 
@@ -367,5 +370,38 @@ rules when it comes to inferring the lifetimes of trait objects:
 When #4 is true we can explicitely define lifetime bounds on a trait object like
 `Box<dyn Red>` using the syntax `Box<dyn Red + 'static>` or `Box<dyn Red + 'a>`
 (`'static` if it lives for the entire program or `'a` if not).
+
+## The Anonymous Lifetime
+
+There's an anonymous lifetime called with `'_` which tells the rust compiler to
+use the elided lifetime (why wouldn't it just do this by default?!).
+
+Here's the example the book gives. If we have a struct that wraps a string
+slice:
+
+```rust
+struct StrWrap<'a>(&'a str);
+```
+
+and then we have a function that simply takes a string slice and returns the
+struct `StrWrap` with that slice wrapped:;
+
+```rust
+fn foo<'a>(string: &'a str) -> StrWrap<'a> {
+    StrWrap(string)
+}
+```
+
+We are good to go - but apparently we can just write it with the anonymous
+lifetime instead so we don't have to use `'a` in so many places:
+
+```rust
+fn foo(string: &str) -> StrWrap<'_> {
+    StrWrap(string)
+}
+```
+
+The book sadly does **not** explain why this works, or why we don't simply just
+put these all over the place. Wish it went more in depth on this!
 
 
