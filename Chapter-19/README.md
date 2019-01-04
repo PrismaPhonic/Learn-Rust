@@ -333,4 +333,39 @@ longer than the value it points at.
 
 ## Inference of Trait Obj Lifetimes
 
+The compiler will automatically infer the lifetimes of trait objects for us.
+Consider the following code:
+
+```rust
+trait Red { }
+
+struct Ball<'a> {
+    diameter: &'a i32,
+}
+
+impl<'a> Red for Ball<'a> { }
+
+fn main() {
+    let num = 5;
+
+    let obj = Box::new(Ball { diameter: &num }) as Box<dyn Red>;
+}
+```
+
+This code compiles fine even though we haven't explicitely annotated the
+lifetimes involved for the trait object. The compiler follows the following four
+rules when it comes to inferring the lifetimes of trait objects:
+
+1. The default lifetime of a trait object is `'static`.
+2. With `&'a Trait` or `&'a mut Trait` the default lifetime of the trait object
+   is `'a`
+3. With a single `T: 'a` clause, the default lifetime of the trait object is
+   `'a`.
+4. With multiple generic lifetime bounds there is no default lifetime so we have
+   to be explicit
+
+When #4 is true we can explicitely define lifetime bounds on a trait object like
+`Box<dyn Red>` using the syntax `Box<dyn Red + 'static>` or `Box<dyn Red + 'a>`
+(`'static` if it lives for the entire program or `'a` if not).
+
 
