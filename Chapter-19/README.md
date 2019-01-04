@@ -8,6 +8,8 @@
     4. [Implement an Unsafe Trait](#implement-an-unsafe-trait)
 2. [Advanced Lifetimes](#advanced-lifetimes)
     1. [Lifetime Subtyping](#lifetime-subtyping)
+    2. [Lifetime Bounds](#lifetime-subtyping)
+    3. [Inference of Trait Obj Lifetimes](#inference-of-trait-obj-lifetimes)
 
 # Advanced Features
 
@@ -303,5 +305,32 @@ non-lexical lifetimes has perhaps made subtyping unneeded?  Let's keep this one
 in our toolbox just in case.
 
 ## Lifetime Bounds
+
+Lifetime bounds are similar to trait bounds. They are a way that we can tell
+Rust to enforce that our references in generic types won't outlive the data they
+are referencing.  To put it more simply, it's a way for us to define a lifetime
+for the data that a generic points at, and not simply define the lifetime of the
+reference itself.
+
+Let's look at an example that won't compile:
+
+```rust
+struct Ref<'a, T>(&'a T);
+```
+
+This won't compile because rust cannot ensure that our reference won't live
+longer than the data it points at.  To fix this we can specify that our generic
+`T` has a lifetime that is at least as long as our reference:
+
+```rust
+struct Ref<'a, T: 'a>(&'a T);
+```
+
+The key here is changing `T` to `T: 'a` that is that the generic (the value
+itself in memory) has a lifetime of `'a` which is the same lifetime shared by
+the reference to `T`. Now rust can enforce that our reference does not live
+longer than the value it points at.
+
+## Inference of Trait Obj Lifetimes
 
 
