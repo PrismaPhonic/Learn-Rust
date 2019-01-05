@@ -16,6 +16,9 @@
     2. [Default Generic Types](#default-generic-types)
     3. [Supertraits](#supertraits)
     4. [Implement External Traits on External Types](#implement-external-traits-on-external-types)
+4. [Advanced Types](#advanced-types)
+    1. [NewType Pattern](#newtype-pattern)
+    2. [Type Aliases](#type-aliases)
 
 # Advanced Features
 
@@ -621,3 +624,39 @@ The caviat with this is that we will not have the methods available to us from
 
 That's it for advanced traits! Now onto advanced methods of interacting with the
 type system.
+
+# Advanced Types
+
+## NewType Pattern
+
+The newtype pattern that we saw can also be used to create a new type around a
+common type so that the rust compiler will enforce type checking and enforce
+functional logic. An example would be if we created a `Meters(u32)` tuple struct
+and a `Millimeter(u32)` tuple struct. They are functionally just `u32`'s under
+the hood but we could enforce that a certain function only take a certain type
+as an argument, or return one of the types.
+
+We can also use it as a way to abstract logic away.  If we wrap a `Vec<T>` in a
+tuple struct then we can choose which methods from `Vec<T>` to expose to the
+public API of our new type.
+
+## Type Aliases
+
+I was actually a bit confused getting to this section because type aliases are
+written identically to how you would write an associated type for a Trait. I've
+tried searching far and wide across the web and can't seem to find any different
+between the two - in fact maybe an associated type is just a type alias inside a
+Trait? Might need to edit this doc later to update.
+
+Essentially a type alias is just a way we can shorten a really long type into a
+short name.  For instance, let's say we are making a tree and our nodes are of
+the type `Option<Box<Tree<T>>>`.  We could store this as a shorter alias:
+
+`type TreeNode<T> = Option<Box<Tree<T>>>`
+
+We could then call it anywhere we like such as an input variable of type
+`TreeNode<i32>`.  Keep in mind that we are not creating a new type like we did
+with the _newtype pattern_ but instead just creating an alias. We still have
+access to all the methods we would on the type we have aliased.
+
+
