@@ -19,6 +19,8 @@
 4. [Advanced Types](#advanced-types)
     1. [NewType Pattern](#newtype-pattern)
     2. [Type Aliases](#type-aliases)
+    3. [The Never Type](#the-never-type)
+    4. [Dynamically Sized Types](#dynamically-sized-types)
 
 # Advanced Features
 
@@ -655,8 +657,94 @@ the type `Option<Box<Tree<T>>>`.  We could store this as a shorter alias:
 `type TreeNode<T> = Option<Box<Tree<T>>>`
 
 We could then call it anywhere we like such as an input variable of type
-`TreeNode<i32>`.  Keep in mind that we are not creating a new type like we did
+`TreeNode<i32>`. Keep in mind that we are not creating a new type like we did
 with the _newtype pattern_ but instead just creating an alias. We still have
 access to all the methods we would on the type we have aliased.
+
+## The Never Type
+
+In Rust there's a special type called `!` that **never returns**.  Some
+languages call this an _empty type_. We use this when we want a function to
+never return:
+
+```rust
+fn bar() -> ! {
+    // --snip--
+}
+```
+
+This is useful if we have a match whose arms must all be the same type. Remember
+back to our guessing game:
+
+```rust
+let guess: u32 = match guess.trim().parse() {
+    Ok(num) => num,
+    Err(_) => continue,
+};
+```
+
+In this example `continue` has a return type of `!`.  Because of this we are
+allowed to include it in a match arm even though it's not of the type `u32`. In
+other words a never type can be coerced into any other type because it will
+never itself return a type. Let's also look at the unwrap method on `Option`:
+
+```rust
+impl<T> Option<T> {
+    pub fn unwrap(self) -> T {
+        match self {
+            Some(val) => val,
+            None => panic!("called `Option::unwrap()` on a `None` value"),
+        }
+    }
+}
+```
+
+What's useful to note here is that `panic!` macro has a type of `!` and
+therefore it can be used in the match arm.
+
+## Dynamically Sized Types
+
+It might be that a values size is not known until runtime. Think back to string
+lices `&str` where the size is known at compile time - all that `&` is in `&str`
+is a pointer to a memory address with a length. There's also `str` in rust which
+is a type whose size cannot be known at compile time. We had to put `str` behind
+a pointer `&` to use it. In general anything where we don't know the size at
+compile time must be put behind a pointer of sometime whether thaht's `&`, `Box`
+or `Rc`. 
+
+When we discussed trait objects we also saw this with declarations like `Box<dyn
+Trait>`. In this case we don't know how big the trait is going to be at compile
+time so we stick it behind a pointer. Under the hood rust has a trait called
+`Sized` that determines whether a type's size is konwn at compile time. Rust
+adds a trait bound of `Sized` on every function that uses a generic - it just
+let's us omit having to write it:
+
+```rust
+fn generic<T: Sized>(t: T) {
+    // --snip--
+}
+```
+
+can instead be written:
+
+```rust
+fn generic<T>(t: T) {
+    // --snip--
+}
+```
+
+We can overwrite this behavior (and we can **only** do this trick for the
+`Sized` trait) if we know our generic will have a size that can't be known at
+compile time but using the trait bound `?Sized` which in this case means "we
+don't have any idea how big this thing will be at compilation time":
+
+```rust
+fn generic<T: ?Sized>(t: &T) {
+    // --snip--
+}
+```
+
+We also have to make our input variable some kind of pointer type -
+in this case we just used a simple `&`.
 
 
