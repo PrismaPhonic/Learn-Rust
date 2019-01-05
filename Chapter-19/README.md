@@ -21,6 +21,9 @@
     2. [Type Aliases](#type-aliases)
     3. [The Never Type](#the-never-type)
     4. [Dynamically Sized Types](#dynamically-sized-types)
+5. [Advanced Functions and Closures](#advanced-functions-and-closures)
+    1. [Function Pointers](#function-pointers)
+    2. [Returning Closures](#returning-closures)
 
 # Advanced Features
 
@@ -747,4 +750,87 @@ fn generic<T: ?Sized>(t: &T) {
 We also have to make our input variable some kind of pointer type -
 in this case we just used a simple `&`.
 
+# Advanced Functions and Closures
 
+## Function Pointers
+
+We can write a function that takes as an argument a function definition. All
+functions in rust coerce to a type of `fn`. This is different from the `Fn`
+trait that applies to both closures and functions in rust. If we wanted to write
+a function that takes **only** other functions (and **not** closures) we could
+write it like such:
+
+```rust
+fn add_one(x: i32) -> i32 {
+    x + 1
+}
+
+fn do_twice(f: fn(i32) -> i32, arg: i32) -> i32 {
+    f(arg) + f(arg)
+}
+
+fn main() {
+    let answer = do_twice(add_one, 5);
+
+    println!("The answer is: {}", answer);
+}
+```
+
+We are defining that our `do_twice` function will take one argument `f` of type
+`fn(i32) -> i32`. Again this is different from the `Fn` trait bounds we used in
+our earlier IO project.
+
+This can be very limiting and it's usually better to write it with the trait
+bounds since both functions and closures implement the `Fn` trait:
+
+```rust
+fn add_one(x: i32) -> i32 {
+    x + 1
+}
+
+fn do_twice<T: (Fn(i32) -> i32)>(f: T, arg: i32) -> i32 {
+    f(arg) + f(arg)
+}
+
+fn main() {
+    let answer = do_twice(add_one, 5);
+
+    let add_two = |num| {
+        num + 2
+    };
+
+    let answer2 = do_twice(add_two, 5);
+
+    println!("The first answer is: {}", answer);
+    println!("The second answer is: {}", answer2);
+}
+```
+
+In this example our `do_twice` function can take either a closure or a function
+as it's type because we used a generic that we bound to the `Fn` trait. In
+`main` we successfully call it with our function and a closure we build inside
+`main`.  This would not be possible with a function pointer - so why even use
+function pointers?
+
+There are some cases where a function pointer is necessary - like interfacing
+with another language.  C for instance does not have closures so we might need
+to specify an `fn` type rather than a generic bound by the `Fn` trait.
+
+## Returning Closures
+
+If we want to return a closure from a function whose job it is to generate a
+closure, the return type is confusing because closures don't have known types.
+All we know about closures is that they implement certain traits - we therefore
+must implement them as trait objects:
+
+```rust
+fn returns_closure() -> Box<dyn Fn(i32) -> i32> {
+    Box::new(|x| x + 1)
+}
+```
+
+Now our code will compile because we have provided a valid type for our return -
+that is a box that points at something (our closure in this case) that
+implements the `Fn` trait.
+
+That's it for advanced function features, onto macros!
