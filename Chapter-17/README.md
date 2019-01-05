@@ -132,13 +132,6 @@ best to try to explain this section.
 
 FYI, I think [this explanation](http://gradebot.org/doc/ipur/traitobject.html) of trait objects is far clearer.
 
-Let's get something out of the way. The Rust Language Book claims that _trait
-objects_ are called objects because they behave much more like objects in OOP
-languages than anything else in Rust. I call bullshit on this as someone who's
-written in a lot of object oriented langauages - they really should have **not**
-called it _trait objects_ which is an unbelievably confusing name.  Let's get
-into it.
-
 Remember when we learned about generics? The Rust compiler will take those
 generics, look at our code during compilation time and re-write it so we have a
 bunch of versions of our methods for all the given types we will be using. It
@@ -231,7 +224,16 @@ what another user might want  to implement `Draw` on, but we do know that we
 only want our `Screen` component field to be composed of drawable things. This
 also means that our type system will now enforce this at compile time!
 
-But let's talk about some performance issues.
+EDIT: After hunting through resources online I think I've finally hit on why
+they call it a trait object. Unfortunately this is not very clear in the Rust
+Language Book. When we make a trait object we are actually setting two pointers
+in memory, not one. We have one pointer to the data itself on the heap, and
+another pointer to a _vtable_ which holds all the methods for that struct which
+is implementing our choosen trait. In essence because we are storing two
+pointers - one to the data and one to methods for that data - in the same
+location, it's called an _object_.  
+
+Let's talk about some performance issues related to using trait objects.
 
 ## Performance Hits
 
