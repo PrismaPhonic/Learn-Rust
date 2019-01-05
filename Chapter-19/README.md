@@ -11,6 +11,11 @@
     2. [Lifetime Bounds](#lifetime-subtyping)
     3. [Inference of Trait Obj Lifetimes](#inference-of-trait-obj-lifetimes)
     4. [The anonymous lifetime](#the-anonymous-lifetime)
+3. [Advanced Traits](#advanced-traits)
+    1. [Placeholder Types in Trait Defs](#placeholder-types-in-trait-defs)
+    2. [Default Generic Types](#default-generic-types)
+    3. [Supertraits](#supertraits)
+    4. [Implement External Traits on External Types](#implement-external-traits-on-external-types)
 
 # Advanced Features
 
@@ -417,3 +422,202 @@ According to the lifetime ellision rules  you can elide lifetimes if you only
 have one input, or one of your inputs is `self` - in either case the lifetime of
 the single input, or the lifetime of self is applied to the output type as well.
 Soooooo.... wtf?!
+
+# Advanced Traits
+
+## Placeholder Types in Trait Defs
+
+We've already seen placeholder types in trait definitions. Let's look back at
+the `Iterator` trait:
+
+```rust
+pub trait Iterator {
+    type Item;
+
+    fn next(&mut self) -> Option<Self::Item>;
+}
+```
+
+There's a placeholder type of `Item` which is the same type that is returned
+inside an `Option` from the `next` method. Later when we implement `Iterator` we
+can specify the type of this placeholder:
+
+```rust
+impl Iterator for Counter {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // --snip--
+```
+
+That's really all there is to it. The reason why we might want to do it this way
+is that by doing it this way rather than using a generic is that a generic might
+end up getting multiple different hard coded types at runtime, but for this
+single implimentation we only get one type to define for our custom struct.
+
+
+## Default Generic Types
+
+When using generic type parameters we can specify a default concrete type. If an
+implimentor of the trait does not define a concrete type it will use a default
+one. Let's look at a case of operator overloading to demonstrate this:
+
+```rust
+use std::ops::Add;
+
+#[derive(Debug, PartialEq)]
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+impl Add for Point {
+    type Output = Point;
+
+    fn add(self, other: Point) -> Point {
+        Point {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
+    }
+}
+
+fn main() {
+    assert_eq!(Point { x: 1, y: 0 } + Point { x: 2, y: 3 },
+               Point { x: 3, y: 3 });
+}
+```
+
+In this case we are overloading the `+` operator for our struct `Point`. We
+specify that when we add two `Point` types together that we are summing the x
+and y fields to produce a new `Point` type.  
+
+Here's what the definition for `Add` trait looks like:
+
+```rust
+trait Add<RHS=Self> {
+    type Output;
+
+    fn add(self, rhs: RHS) -> Self::Output;
+}
+```
+
+It specifies a default type for `RHS` (stands for right hand side) of being
+`Self` - thus we specify that the second argument to `add` method is the same
+type as the first argument of `self`. The general syntax for default type
+parameters is `<PlaceholderType=ConcreteType>`.
+
+We can also overload the `+` operator such that the two arguments are of
+different types and not use the default of the two arguments being the same
+type:
+
+```rust
+use std::ops::Add;
+
+struct Millimeters(u32);
+struct Meters(u32);
+
+impl Add<Meters> for Millimeters {
+    type Output = Millimeters;
+
+    fn add(self, other: Meters) -> Millimeters {
+        Millimeters(self.0 + (other.0 * 1000))
+    }
+}
+```
+
+cool!
+
+I'm going to skip over the next section from the book on Fully Qualified Syntax
+because I honestly can't think of a use case for when I would ever need it.
+knock on wood I guess. 
+
+## Supertraits
+
+Supertraits are useful when we are designing a trait that needs another trait
+for it's inherent functionality.  For instance, let's say we had a trait that
+draws an outline around a `Point` struct coordinates on the screen.  In that
+sense it would have to impliment `Display` trait itself to have access to
+`println!`.  We could define it like such:
+
+```rust
+use std::fmt;
+
+trait OutlinePrint: fmt::Display {
+    fn outline_print(&self) {
+        let output = self.to_string();
+        let len = output.len();
+        println!("{}", "*".repeat(len + 4));
+        println!("*{}*", " ".repeat(len + 2));
+        println!("* {} *", output);
+        println!("*{}*", " ".repeat(len + 2));
+        println!("{}", "*".repeat(len + 4));
+    }
+}
+```
+
+Our trait `OutlinePrint` specifies that it needs the `Display` traits
+functionality by specifying: `OutlinePrint: fmt::Display`.  This allows it to
+print an outline:
+
+```
+**********
+*        *
+* (1, 3) *
+*        *
+**********
+```
+
+What this really does is enforce that anything that implements `OutlinePrint`
+**must** also implement `Display`.  That means that this will not compile:
+
+```rust
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+impl OutlinePrint for Point {}
+```
+
+until we implement `Display` like such:
+
+```rust
+use std::fmt;
+
+impl fmt::Display for Point {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "({}, {})", self.x, self.y)
+    }
+}
+```
+
+Once we do this we can now implement `OutlinePrint`.
+
+## Implement External Traits on External Types
+
+The orphan rule keeps us from being able to implement external traits on external types but there's a pattern we can use to get around this called the _newtype pattern_. This pattern is essentially putting a wrapper around the external type of a tuple struct and then because we have defined a new type locally - we can apply an external trait to it. Let's try that now by wrapping a `Vec<T>` so we can implement our own version of `fmt::Display`:
+
+```rust
+use std::fmt;
+
+struct Wrapper(Vec<String>);
+
+impl fmt::Display for Wrapper {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "[{}]", self.0.join(", "))
+    }
+}
+
+fn main() {
+    let w = Wrapper(vec![String::from("hello"), String::from("world")]);
+    println!("w = {}", w);
+}
+```
+
+The caviat with this is that we will not have the methods available to us from
+`Vec<T>`. We can apparently still get access to them if we want by implementing
+`Deref` to get at the value inside the wrapper and expose the methods there.
+
+That's it for advanced traits! Now onto advanced methods of interacting with the
+type system.
