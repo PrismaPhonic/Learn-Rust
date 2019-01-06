@@ -24,6 +24,12 @@
 5. [Advanced Functions and Closures](#advanced-functions-and-closures)
     1. [Function Pointers](#function-pointers)
     2. [Returning Closures](#returning-closures)
+6. [Macros](#macros)
+    1. [Macros vs Functions](#macros-vs-functions)
+    2. [Declarative Macros](#declarative-macros)
+    3. [Procedural Macros](#procedural-macros)
+    4. [Attribute Like Macros](#attribute-like-macros)
+    5. [Function like macros](#function-like-macros)
 
 # Advanced Features
 
@@ -834,3 +840,117 @@ that is a box that points at something (our closure in this case) that
 implements the `Fn` trait.
 
 That's it for advanced function features, onto macros!
+
+# Macros
+
+## Difference between Macros and Functions
+
+A primary difference between macros and functions is that functions must declare
+how many arguments they take, and the types of the arguments whereas macros can
+take any variable number of arguments. This makes macros harder to maintain as
+their definitions have to be more complex to handle the extra functionality they
+provide.
+
+The book says that the difference between macros and functions is also that you
+must define or bring macros into scope before you call them - whereas you can
+define functions anywhere and call them anywhere (the functions are hoisted, but
+the macros are not).
+
+## Declarative Macros
+
+Declarative macros are macros like `vec![]`.  They are defined using the
+`macro_rules` construct:
+
+```rust
+#[macro_export]
+macro_rules! vec {
+    ( $( $x:expr ),* ) => {
+        {
+            let mut temp_vec = Vec::new();
+            $(
+                temp_vec.push($x);
+            )*
+            temp_vec
+        }
+    };
+}
+```
+
+The `#[macro_export]` annotation makes sure that this macro will be available
+anywhere in the crate it's imported in (after the import line itself).
+`macro_rules!` is put in front of the name of the macro we are defining, and our
+macro name is written **without** the `!` (that's added for us).  This then
+essentially looks like a match statement.  We are matching vec on which we have
+some arms - well, in this case only one arm.  The first arm matches any pattern
+that fits `$( $x:expr  ),*`.  What the hell does this mean?  Well, the first
+dollar sign followed by parentheses captures the values that match the pattern
+for use in the arm.  Then we have any rust expression `expr` and assign it to
+the name `$x`.  The comma star `, *` means that we will match lazily - that is
+we will match zero or more of things that also match what came before the comma.
+In this case we will take all of those matches and push each into the vec.
+
+If we call `vec![1, 2, 3]` it will be expanded to:
+
+```rust
+let mut temp_vec = Vec::new();
+temp_vec.push(1);
+temp_vec.push(2);
+temp_vec.push(3);
+temp_vec
+```
+
+That is that 1, 2, and 3 will match and then get pushed into a new vec and that
+vec then returned to us. Declarative macros match against patterns and replace
+the code with other code. Let's look now at procedural macros
+
+
+## Procedural Macros
+
+The example from the book (for derive macros) is extremely dense on procedural macros and introduces
+wayyyyyyyy too many new concepts at once (please, heavily consder a re-write if
+the author ever happens to read this).  I'm going to skip you the pain I went
+
+Procedural macros are just functions that take a TokenStream and output a
+TokenStream.  A TokenStream is basically what your code turns into by the
+compiler right before it gets compiled.  It's a stream of "tokens" - so a
+procedural macro intercepts your code on it's way to get compiled and mutates
+something about the token stream - whereas a declarative macro literally
+re-writes your code in place and happens well before compilation time.
+
+## Attribute Like Macros
+
+So attribute macros are like derive macros but instead of generating code for
+the `derive` attribute, they allow you to create new attributes. Derive only
+works for structs or enums while attribute-like macros can go on other items
+like functions (honestly this whole section is so unbelievably confusing - the
+team that writes the rust language book should heavily consider a re-write of
+the macro section).
+
+## Function-like Macros
+
+function like macros essentially take arguments that look like function calls.
+Here's an example from the book of a macro that would generate a call to a
+relational database using some sql:
+
+```rust
+let sql = sql!(SELECT * FROM posts WHERE id=1);
+```
+
+The macros definition would look like this:
+
+```
+#[proc_macro]
+pub fn sql(input: TokenStream) -> TokenStream {
+```
+
+In this sense it looks very similar to other procedural macros, but it looks
+more like a function call.
+
+
+Honestly I understand declarative macros very well but the sections on
+procedural macros were very convoluted and confusing. If I find myself using
+them in my actual code writing and I learn them a bit better I will come back
+and re-write these sections.
+
+Looks like we are done with these sectionns - next Chapter that ends the book is
+a final project building a web server!
