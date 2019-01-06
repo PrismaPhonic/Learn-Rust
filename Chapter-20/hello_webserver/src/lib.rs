@@ -3,7 +3,32 @@ use std::sync::{Arc, Mutex, mpsc};
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
-    tx: mpsc::Sender<Job>,
+    tx: mpsc::Sender<Message>,
+}
+
+impl Drop for ThreadPool {
+    fn drop(&mut self) {
+        println!("Sending terminate message to all workers.");
+
+        for _ in &mut self.workers {
+            self.tx.send(Message::Terminate).unwrap();
+        }
+
+        println!("Shutting down all workers.");
+
+        for worker in &mut self.workers {
+            println!("Shutting down worker {}", worker.id);
+
+            if let Some(thread) = worker.thread.take() {
+                thread.join().unwrap();
+            }
+        }
+    }
+}
+
+enum Message {
+    NewJob(Job),
+    Terminate,
 }
 
 trait FnBox {
@@ -20,24 +45,33 @@ type Job = Box<dyn FnBox + Send + 'static>;
 
 struct Worker {
     id: usize,
-    thread: thread::JoinHandle<()>,
+    thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Worker {
-    fn new(id: usize, rx: Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker {
+    fn new(id: usize, rx: Arc<Mutex<mpsc::Receiver<Message>>>) -> Worker {
         let thread = thread::spawn(move || {
             loop {
-                let job = rx.lock().unwrap().recv().unwrap();
+                let message = rx.lock().unwrap().recv().unwrap();
 
-                println!("Worker {} got a job; executing.", id);
-
-                job.call_box();
+                match message {
+                    Message::NewJob(job) => {
+                        println!("Worker {} got a job; executing.", id);
+                        
+                        job.call_box();
+                    },
+                    Message::Terminate => {
+                        println!("Worker {} was told to terminate.", id);
+                        
+                        break;
+                    },
+                }
             }
         });
 
         Worker {
             id,
-            thread: thread,
+            thread: Some(thread),
         }
     }
 }
@@ -72,6 +106,6 @@ impl ThreadPool {
     {
         let job = Box::new(f);
 
-        self.tx.send(job).unwrap();
+        self.tx.send(Message::NewJob(job)).unwrap();
     }
 }

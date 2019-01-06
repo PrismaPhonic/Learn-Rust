@@ -501,7 +501,30 @@ our channel where it will be received by whatever available thread currently has
 a lock on the mutex.  they will receive the job, store it, release the lock and
 then run a method that will invoke the closure.
 
-Phew! Ok, finally done!  Next section we'll look at some code cleanup and
-refactoring.
+Phew! Ok, finally done with our library! Now we just need to modify our
+`main.rs` to call our threadpool:
 
+```rust
+use hello_webserver::ThreadPool;
 
+fn main() {
+    let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
+    let pool = ThreadPool::new(4);
+
+    for stream in listener.incoming() {
+        let stream = stream.unwrap();
+
+        pool.execute(|| {
+            handle_connection(stream);
+        });
+    }
+}
+```
+
+We import our `ThreadPool` and then instantiate it with how many threads we want
+to use.  As we loop over our streams we can do a `pool.execute` on each stream
+and then create our closure which will be our `handle_connection` function with
+the stream passed to it.  Now we won't exceed the threads on our system because
+we are limiting ourselves to just 4 threads. If there's more work than threads
+the remaining work will sit on the stack waiting for a free thread to receive
+it.
