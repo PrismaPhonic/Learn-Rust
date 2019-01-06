@@ -333,3 +333,175 @@ taking so long (and we aren't taking advantage of async) it locks up loading
 time on the other tab. Let's resolve this by going multithreaded.
 
 
+## Building our Own Threadpool
+
+The rest of this section is very dense. I'm going to post the final code and try
+to walk through it. Before we do that though we need to restructure our
+project. I called my project `hello_webserver` so my imports will match that.
+First we create a library file at `src/lib.rs`.  Then we'll move our
+`src/main.rs` into `src/bin/main.rs` (create the bin folder first).  Alright,
+now let's lay out all the steps we want to accomplish before we dive into the
+finished code:
+
+1. Define a `Worker` struct that holds an `id` and a `JoinHandle<()>`
+2. Change `ThreadPool` to hold a vector of `Worker` instances.
+3. Define a `Worker::new` function that takes an `id` number and returns a
+   `Worker` instance that holds the `id` and a thread spawned with an empty
+closure.
+4. In `ThreadPool::new` use the `for` loop counter to generate an `id`, create a
+   new `Worker` with that `id`, and store the worker in a new vector.
+5. Setup the `ThreadPool` so it creates a channel and holds onto the sending
+   side of the channel
+6. Each Receiver will need to be wrapped in an Arc (shared ownership that's
+   thread safe) and a Mutex (for inner mutability) and then held onto by each
+worker.  We will send the closures down these channels as jobs to be called
+7. We'll create a new Job struct that will hold the closures we want to send
+   down the channel
+8. In it's thread, the Worker will loop over the receiving side of the channel
+   trying to get a lock on the Mutex - once it has it, it grabs a job and
+immediately releases the lock before executing it's job.
+
+Alright, thats a lot and probably will make more sense once you see the code and
+we walk through it:
+
+```rust
+use std::thread;
+use std::sync::{Arc, Mutex, mpsc};
+
+pub struct ThreadPool {
+    workers: Vec<Worker>,
+    tx: mpsc::Sender<Job>,
+}
+
+trait FnBox {
+    fn call_box(self: Box<Self>);
+}
+
+impl<F: FnOnce()> FnBox for F {
+    fn call_box(self: Box<F>) {
+        (*self)()
+    }
+}
+
+type Job = Box<dyn FnBox + Send + 'static>;
+
+struct Worker {
+    id: usize,
+    thread: thread::JoinHandle<()>,
+}
+
+impl Worker {
+    fn new(id: usize, rx: Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker {
+        let thread = thread::spawn(move || {
+            loop {
+                let job = rx.lock().unwrap().recv().unwrap();
+
+                println!("Worker {} got a job; executing.", id);
+
+                job.call_box();
+            }
+        });
+
+        Worker {
+            id,
+            thread: thread,
+        }
+    }
+}
+
+impl ThreadPool {
+    /// Create a new ThreadPool.
+    ///
+    /// The size is the number of threads in the pool.
+    ///
+    /// # Panics
+    ///
+    /// The `new` function will panic if the size is zero.
+    pub fn new(size: usize) -> ThreadPool {
+        assert!(size > 0);
+
+        let (tx, rx) = mpsc::channel();
+
+        let rx = Arc::new(Mutex::new(rx));
+
+        let mut workers = Vec::with_capacity(size);
+
+        for id in 0..size {
+            workers.push(Worker::new(id, Arc::clone(&rx)));
+        }
+
+        ThreadPool { workers, tx }
+    }
+
+    pub fn execute<F>(&self, f: F)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        let job = Box::new(f);
+
+        self.tx.send(job).unwrap();
+    }
+}
+```
+
+Alright, let's walk through this code. We bring in `thread` (so we can spawn
+them) into scope and then from `sync` we bring in `Arc`, `Mutex`, and `mpsc`.
+
+We have ouor `ThreadPool` struct and that has a field of `workers` which is a
+vector of `Worker` structs, and then a transmitter which is of the type
+`mpsc::Sender<Job>`.  the type of all `mpsc` tx's are `mpsc::Sender<T>` and in
+this case our sender will be sending a `Job`.
+
+Let's skip pass the confusing `FnBox` stuff and honestly ignore that. It's a
+hacky solution to what I would consider to be a bug in the compiler.
+
+We get down then to `Job` which is just a type alias for a `Box<dyn FnBox + Send
++ 'static>`.  We essentially stole this signature from `thread::spawn` API
+  (since we'll be managing our own threads manually in a pool). But basically
+whatever the box points at needs to have a static lifetime since the thread
+might outlive whatever it was called with, and send must be enabled so we can
+send stuff to other threads.  `FnBox` is just a hacky way that we can implement
+`call_box` which allows us to invoke the closure we are sending as a job inside
+the thread itself once it's aquired a job.
+
+We then have a `Worker` struct which has an id and a thread.  The thread type of
+`JoinHandle` is the type all returned threads have.  Our `new` method on Worker
+first creates a thread where we move the receiver into it - that's fine becausee
+we cloned it with Arc::clone so we can take ownership of this clone.  We then
+get a lock on the mutex and once we do we call `recv` which is a method on the
+`mpsc` receiver to get whatever message was being sent down to the receiver. 
+
+We print out that we got a job and our thread id (now we see where the id comes
+into play) and lastly we invoke that `call_box` method onn the job which just
+invokes the closure for us stored in the job.  
+
+That was all just for our thread (and yeah, we loop infinitely so our thread is
+looking for work non-stop).  We lastly return a new worker with the id passed to
+new and the created thread ready to start working for us non-stop.
+
+We finally get to our `impl` for `ThreadPool`.  We have a `new` method which
+returns a `ThreadPool`.  We first assert that the size being requested for a new
+`ThreadPool` is not zero since that would be pointless. Then we get our
+transmitter and receiver.  We shadow our receiver with one wrapped in a `Mutex`
+(for threadsafe interior mutability) and then an `Arc` (for shared ownership
+that is threadsafe) since if we remember we can only have one rx.  Arc::clone in
+this case does not actually clone the receiver but just increases the strong
+count.
+
+We then create workers as a vector with a known capacity (for efficiency reasons) of the usize supplied. We have a loop that creates our id's and pushes new workers into that workers vec which we finally put into our new ThreadPool along with our single transmitter and return it!
+
+Boy that was a lot! and we still aren't done.
+
+So we lastly have an execute method on the threadpool that takes the threadpool
+itself (which has our transmitter stored in a field) and a function. We specify
+that this function must implement FnOnce() (onetime closure with no input or
+return), Send trait (so we can send data between threads) and static lifetime.
+We create a new job by putting our closure into a box and then sending it down
+our channel where it will be received by whatever available thread currently has
+a lock on the mutex.  they will receive the job, store it, release the lock and
+then run a method that will invoke the closure.
+
+Phew! Ok, finally done!  Next section we'll look at some code cleanup and
+refactoring.
+
+
