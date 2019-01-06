@@ -6,6 +6,8 @@
    2. [Selective Routes](#selective-routes)
 2. [Going Multithreaded](#going-multithreaded)
    1. [Simulating Slowness](#simulating-slowness)
+   2. [Building Our Own Threadpool](#building-our-own-threadpool)
+   3. [Graceful Shutdown](#graceful-shutdown)
 
 # Web Server Project
 
@@ -528,3 +530,192 @@ the stream passed to it.  Now we won't exceed the threads on our system because
 we are limiting ourselves to just 4 threads. If there's more work than threads
 the remaining work will sit on the stack waiting for a free thread to receive
 it.
+
+## Graceful Shutdown
+
+Now we need to implement the `Drop` trait on our threadpool so when we are done
+with our work we can clean up elegantly. We want to send a message to each
+thread telling them two things:
+
+1. Break out of their loops so they stop trying to acquire locks on the receiver
+2. Shutdown using the `join` method to await them finishing their jobs and then
+   ending their existence (sepukku!!!)
+
+Alright, so let's tart with #1.  for the threads to receive some kind of
+termination message we need to change the nature of what we are sending them.
+Instead of sending them only a job, we will send them either a job or a
+termination message. This sounds like a job for a new enum! Let's make that now:
+
+```rust
+enum Message {
+    NewJob(Job),
+    Terminate,
+}
+```
+
+Alright, so now we have an enum of `Message` that has variants `NewJob` (which
+holds a `Job` in it) or `Terminate`.  Let's change our library everywhere to now
+work with this new enum type.  First, our `ThreadPool` will need to send a type
+of `Message` now rather than `Job` so that message could include the `Terminate`
+variant:
+
+```rust
+pub struct ThreadPool {
+    workers: Vec<Worker>,
+    tx: mpsc::Sender<Message>,
+}
+```
+
+We also need to change our `execute` function so we are sending a
+`Message::NewJob(job)` rather than just sending a job:
+
+
+```rust
+impl ThreadPool {
+    // --snip--
+
+    pub fn execute<F>(&self, f: F)
+        where
+            F: FnOnce() + Send + 'static
+    {
+        let job = Box::new(f);
+
+        self.tx.send(Message::NewJob(job)).unwrap();
+    }
+}
+```
+
+We also need to remember that our `Worker`'s `new` method used to take a
+receiver that wrapped up a Job but now will wrap up a `Message` because that
+message might now be a job or a terminate signal:
+
+```rust
+impl Worker {
+    fn new(id: usize, rx: Arc<Mutex<mpsc::Receiver<Message>>>) ->
+        Worker {
+
+        let thread = thread::spawn(move ||{
+            loop {
+                let message = rx.lock().unwrap().recv().unwrap();
+
+                match message {
+                    Message::NewJob(job) => {
+                        println!("Worker {} got a job; executing.", id);
+
+                        job.call_box();
+                    },
+                    Message::Terminate => {
+                        println!("Worker {} was told to terminate.", id);
+
+                        break;
+                    },
+                }
+            }
+        });
+
+        Worker {
+            id,
+            thread: Some(thread),
+        }
+    }
+}
+```
+
+Alright so we changed our input type to reflect a `Message` and now we set up a
+match so if we got a new job then we execute it, and if we got a terminate
+message than we break out of our loop.  You'll also notice that wee changed our
+thread to return `Some(thread)`.  The reason for this is that it's not possible
+for us to take **ownership** of the thread to call a `join` on it unless we
+remove it from the previous owner.  By using `Some` we can issue a `take` on it
+which will take ownership and change it in the `thread` field from a `Some` to a
+`None`.  To accomodate this change we also need to update our Worker struct:
+
+```rust
+struct Worker {
+    id: usize,
+    thread: Option<thread::JoinHandle<()>>,
+}
+```
+
+Now that we finally have all these pieces in place let's write our drop function
+for our threadpool:
+
+```rust
+impl Drop for ThreadPool {
+    fn drop(&mut self) {
+        println!("Sending terminate message to all workers.");
+
+        for _ in &mut self.workers {
+            self.sender.send(Message::Terminate).unwrap();
+        }
+
+        println!("Shutting down all workers.");
+
+        for worker in &mut self.workers {
+            println!("Shutting down worker {}", worker.id);
+
+            if let Some(thread) = worker.thread.take() {
+                thread.join().unwrap();
+            }
+        }
+    }
+}
+```
+
+What are doing here? We first have a loop that  sends the terminate signal -
+this ensures that all of our workers get a terminate message (end their loop)
+before they get a message to shut down their threads.  We issue the thread
+shutdown using a `join` in another loop, after we match it against
+`Some(thread)` and using `take` so that we take ownership (and the thread field
+on the worker will become a `None` as a result).
+
+That's it! Now we just change our main function (for testing) so that it only
+accepts a few connections - by limiting our iterator to only give back a few
+streams (using the `take` iterator method) we can see in our terminal our
+threads being shut down for us:
+
+```rust
+fn main() {
+    let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
+    let pool = ThreadPool::new(4);
+
+    for stream in listener.incoming().take(6) {
+        let stream = stream.unwrap();
+
+        pool.execute(|| {
+            handle_connection(stream);
+        });
+    }
+
+    println!("Shutting down.");
+}
+```
+
+This will only take 6 streams before issuing a shutdown. Try opening a few tabs
+in your browser and going to the website on both the `/sleep` and `/` addresses
+and see when it shuts down.  When I did it I got this:
+
+```
+Worker 0 got a job; executing.
+Worker 1 got a job; executing.
+Worker 2 got a job; executing.
+Shutting down.
+Sending terminate message to all workers.
+Worker 3 got a job; executing.
+Shutting down all workers.
+Worker 1 was told to terminate.
+Worker 2 was told to terminate.
+Worker 0 was told to terminate.
+Shutting down worker 0
+Shutting down worker 1
+Shutting down worker 2
+Shutting down worker 3
+Worker 3 was told to terminate.
+```
+
+Cool!  Our server now will gracefully shut down each thread - by first sending a
+message to break out of our loops and then subsequently sending a message to
+wait for all threads to finish their current tasks.  
+
+That's it for the entire book, woot! Feels pretty good to finish this one -
+this book got pretty deep, but it was a lot of fun.  
