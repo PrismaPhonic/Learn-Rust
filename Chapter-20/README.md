@@ -4,6 +4,8 @@
 1. [Single Threaded Web Server](#single-threaded-web-server)
    1. [Writing a Response](#writing-a-response)
    2. [Selective Routes](#selective-routes)
+2. [Going Multithreaded](#going-multithreaded)
+   1. [Simulating Slowness](#simulating-slowness)
 
 # Web Server Project
 
@@ -284,3 +286,50 @@ any other address we get our 404 page linking us back to our home address!
 
 Now that we've gotten our very simple http server built out in a single threaded
 application, let's look at how to turn it into a multi-threaded web server.
+
+# Going Multithreaded
+
+Right now our server is singlethreaded.  Let's simulate a slow request to see
+why multithreading might be useful and then convert to a multithreaded server.
+
+
+## Simulating Slowness
+
+I thought this example from the book was a bit silly - but it tries to show that
+when the server hangs from one long request (on a single threaded server) that
+it can hold up all other requests. This isn't completely true because you could
+have a single threaded Node.js server where nearly all operations are async
+(non-blocking) and you would still get very fast response. Rust can do both
+async **and** multithreading though so why not use both?  Here's the code to
+simulate a lockup:
+
+```rust
+use std::thread;
+use std::time::Duration;
+// --snip--
+
+fn handle_connection(mut stream: TcpStream) {
+    // --snip--
+
+    let get = b"GET / HTTP/1.1\r\n";
+    let sleep = b"GET /sleep HTTP/1.1\r\n";
+
+    let (status_line, filename) = if buffer.starts_with(get) {
+        ("HTTP/1.1 200 OK\r\n\r\n", "hello.html")
+    } else if buffer.starts_with(sleep) {
+        thread::sleep(Duration::from_secs(5));
+        ("HTTP/1.1 200 OK\r\n\r\n", "hello.html")
+    } else {
+        ("HTTP/1.1 404 NOT FOUND\r\n\r\n", "404.html")
+    };
+
+    // --snip--
+}
+```
+
+We can simulate this slowness by opening up two tabs in our browser and going to
+`/sleep` and then in another tab going to `/`.  Because the `/sleep` request is
+taking so long (and we aren't taking advantage of async) it locks up loading
+time on the other tab. Let's resolve this by going multithreaded.
+
+

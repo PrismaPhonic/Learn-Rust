@@ -1,5 +1,5 @@
 [package]
-name = "hello_web_server"
+name = "hello_webserver"
 version = "0.1.0"
 authors = ["Peter Farr <Peter@PrismaPhonic.com>"]
 edition = "2018"
